@@ -10,7 +10,7 @@
 // === Thresholds ===
 #define O2_NORMAL_MIN   85.0   // Above this = NORMAL
 #define O2_WARNING_MIN  70.0   // Between 70–85 = WARNING
-#define O2_DANGER_MAX   70.0   // Below this = DANGER
+#define O2_DANGER_THRESHOLD   70.0   // Below this = DANGER
 
 // === Timing ===
 #define SENSOR_INTERVAL_MS   500   // Sensor update interval

@@ -31,7 +31,7 @@ void setup() {
   // Pin modes
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW); // compressor OFF by default
+  digitalWrite(RELAY_PIN, HIGH); // compressor OFF by default
   digitalWrite(BUZZER_PIN, LOW);
 
   // LCD init
@@ -42,9 +42,9 @@ void setup() {
   dataMutex = xSemaphoreCreateMutex();
 
   // Create tasks
-  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 1);
-  xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, &displayTaskHandle, 1);
-  xTaskCreatePinnedToCore(alertTask, "AlertTask", 4096, NULL, 1, &alertTaskHandle, 1);
+  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 0);
+  xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, &displayTaskHandle, 0);
+  xTaskCreatePinnedToCore(alertTask, "AlertTask", 8192, NULL, 1, &alertTaskHandle, 1);
 }
 
 // === Sensor Task (demo mode with potentiometer) ===
@@ -102,7 +102,13 @@ void displayTask(void *pvParameters) {
 
 // === Alert Task ===
 void alertTask(void *pvParameters) {
+  static uint8_t dangerCount    = 0;
+  static uint8_t warningCount   = 0;
   static unsigned long lastBuzz = 0;
+
+  static bool smsSent           = false;
+  static bool callMade          = false;
+
   for (;;) {
     SensorData alert;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
@@ -110,11 +116,32 @@ void alertTask(void *pvParameters) {
       xSemaphoreGive(dataMutex);
     }
 
-    if (alert.o2 > O2_NORMAL_MIN) {
-      digitalWrite(RELAY_PIN, HIGH); // compressor ON
-      digitalWrite(BUZZER_PIN, LOW);
-    } else if (alert.o2 > O2_WARNING_MIN) {
-      digitalWrite(RELAY_PIN, HIGH); // compressor ON
+    if (alert.o2 < O2_WARNING_MIN) {
+      dangerCount++;
+      warningCount  = 0;
+    }
+    else if (alert.o2 < O2_NORMAL_MIN) {
+      warningCount++;
+      dangerCount   = 0;
+    }
+    else {
+      dangerCount   = 0;
+      warningCount  = 0;
+      smsSent       = false;
+      callMade      = false;
+    }
+
+    if (dangerCount >= 3) {
+      digitalWrite(RELAY_PIN, HIGH);  // compressor off
+      digitalWrite(BUZZER_PIN, HIGH); // continous buzzing
+      // TODO: uncomment GSM call when SIM800L EVB is wired
+      if (!callMade) {
+      // modem.callNumber(CAREGIVER_NUMBER);
+      // callMade = true;
+      }
+    }
+    else if (warningCount >= 3) {
+      digitalWrite(RELAY_PIN, LOW); // compressor still on
       // WARNING: short intermittent beeps
       if (millis() - lastBuzz > BUZZER_WARNING_GAP) {
         digitalWrite(BUZZER_PIN, HIGH);
@@ -123,13 +150,14 @@ void alertTask(void *pvParameters) {
         lastBuzz = millis();
       }
       // TODO: uncomment GSM SMS when SIM800L EVB is wired
+      if (!smsSent) {
       // modem.sendSMS(CAREGIVER_NUMBER, "Warning: O2 low");
-    } else {
-      digitalWrite(RELAY_PIN, LOW);  // compressor OFF
-      // DANGER: buzzer ON continuously
-      digitalWrite(BUZZER_PIN, HIGH);
-      // TODO: uncomment GSM call when SIM800L EVB is wired
-      // modem.callNumber(CAREGIVER_NUMBER);
+      // smsSent = true;
+      }
+    }
+    else {
+      digitalWrite(RELAY_PIN, LOW);  // compressor on in normal operation
+      digitalWrite(BUZZER_PIN, LOW);  // buzzer off in normal operation
     }
 
     vTaskDelay(pdMS_TO_TICKS(ALERT_INTERVAL_MS));
@@ -137,5 +165,5 @@ void alertTask(void *pvParameters) {
 }
 
 void loop() {
-  // Empty — everything runs in tasks
+  vTaskDelay(portMAX_DELAY); // everything runs in tasks
 }
