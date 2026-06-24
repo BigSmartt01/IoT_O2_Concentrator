@@ -1788,6 +1788,172 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Jumper:Jumper_2_Bridged"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "JP"
+				(at 0 1.905 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Jumper_2_Bridged"
+				(at 0 -2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Jumper, 2-pole, closed/bridged"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Jumper SPST"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Jumper* TestPoint*2Pads* TestPoint*Bridge*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Jumper_2_Bridged_0_0"
+				(circle
+					(center -2.032 0)
+					(radius 0.508)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 2.032 0)
+					(radius 0.508)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Jumper_2_Bridged_0_1"
+				(arc
+					(start -1.524 0.254)
+					(mid 0 0.762)
+					(end 1.524 0.254)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Jumper_2_Bridged_1_1"
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 0 180)
+					(length 2.54)
+					(name "B"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "PCM_4ms_Power-symbol:PWR_FLAG"
 			(power global)
 			(pin_numbers
@@ -3714,6 +3880,16 @@
 	)
 	(wire
 		(pts
+			(xy 97.79 193.04) (xy 100.33 193.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3520dd8c-a0f0-48e0-a212-36d946a874b8")
+	)
+	(wire
+		(pts
 			(xy 123.19 139.7) (xy 123.19 140.97)
 		)
 		(stroke
@@ -3731,6 +3907,16 @@
 			(type default)
 		)
 		(uuid "3b4013c1-5e3a-4821-8f8b-949ce0f227eb")
+	)
+	(wire
+		(pts
+			(xy 97.79 173.99) (xy 100.33 173.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3c2bb440-4df4-4b5f-97de-8ae1a2cad395")
 	)
 	(wire
 		(pts
@@ -3841,6 +4027,16 @@
 			(type default)
 		)
 		(uuid "5950d4f2-610d-41fa-b13e-8dc4b0182c24")
+	)
+	(wire
+		(pts
+			(xy 110.49 193.04) (xy 113.03 193.04)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5ee74f4b-ae90-4ce7-b103-06bb229576c5")
 	)
 	(wire
 		(pts
@@ -4014,6 +4210,16 @@
 	)
 	(wire
 		(pts
+			(xy 97.79 185.42) (xy 100.33 185.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "90897d0c-6c5f-4d34-935e-403f6815a87a")
+	)
+	(wire
+		(pts
 			(xy 48.26 104.14) (xy 50.8 104.14)
 		)
 		(stroke
@@ -4021,6 +4227,16 @@
 			(type default)
 		)
 		(uuid "9140bcba-da82-476c-bb62-da204007ab61")
+	)
+	(wire
+		(pts
+			(xy 110.49 185.42) (xy 113.03 185.42)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "916945b4-5140-4bc7-86d2-6ffd6a96a881")
 	)
 	(wire
 		(pts
@@ -4214,6 +4430,16 @@
 	)
 	(wire
 		(pts
+			(xy 110.49 165.1) (xy 113.03 165.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d19ca83e-bf23-475e-b364-a0093a4dd269")
+	)
+	(wire
+		(pts
 			(xy 71.12 115.57) (xy 69.85 115.57)
 		)
 		(stroke
@@ -4254,6 +4480,16 @@
 	)
 	(wire
 		(pts
+			(xy 110.49 173.99) (xy 113.03 173.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e43d6f11-1f17-4dc5-a5d1-5de2902bef67")
+	)
+	(wire
+		(pts
 			(xy 48.26 49.53) (xy 50.8 49.53)
 		)
 		(stroke
@@ -4281,6 +4517,16 @@
 			(type default)
 		)
 		(uuid "f1020a1e-0c05-4d7b-9a1b-0a97f4c9b779")
+	)
+	(wire
+		(pts
+			(xy 97.79 165.1) (xy 100.33 165.1)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f190ac36-3056-4bb8-a230-efdb92f25942")
 	)
 	(wire
 		(pts
@@ -4423,6 +4669,16 @@
 		(uuid "24d90d5f-253f-468a-b83e-a580300118f4")
 	)
 	(label "5V_VCC"
+		(at 97.79 165.1 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "28a247ed-72d8-4099-9040-a6f41688b008")
+	)
+	(label "5V_VCC"
 		(at 208.28 46.99 0)
 		(effects
 			(font
@@ -4462,6 +4718,16 @@
 		)
 		(uuid "3df26ae5-8b21-4e06-92a8-91e2be692429")
 	)
+	(label "5V_VCC"
+		(at 113.03 193.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "4c6b698c-a4f2-4f23-b64e-88039605d75b")
+	)
 	(label "RELAY_27"
 		(at 49.53 66.04 0)
 		(effects
@@ -4471,6 +4737,26 @@
 			(justify left bottom)
 		)
 		(uuid "566ec384-e380-4153-873e-02e8bea3f073")
+	)
+	(label "5V_VCC"
+		(at 113.03 185.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "5cbb688b-0263-458f-8868-4043d1632fd3")
+	)
+	(label "5V_VCC"
+		(at 97.79 185.42 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "5da7346d-247e-41a7-8ce4-da353ba88e02")
 	)
 	(label "POT_34"
 		(at 228.6 97.79 0)
@@ -4582,6 +4868,16 @@
 		)
 		(uuid "84bc4178-7b03-42f7-b68b-b6832f71c13d")
 	)
+	(label "5V_VCC"
+		(at 113.03 165.1 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "8568baa5-8827-46cb-a57a-990de435d88f")
+	)
 	(label "GPIO32"
 		(at 228.6 92.71 0)
 		(effects
@@ -4601,6 +4897,16 @@
 			(justify left bottom)
 		)
 		(uuid "93d7218e-9fd6-413e-85f2-2403f3d35797")
+	)
+	(label "5V_VCC"
+		(at 97.79 193.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "943cf6b5-7cf2-4655-be4d-5c68f5ae6eb4")
 	)
 	(label "O2_VCC"
 		(at 44.45 151.13 0)
@@ -4642,7 +4948,7 @@
 		)
 		(uuid "bb2fcf0e-a3f4-43b8-af9e-00f2f0d08343")
 	)
-	(label "GPIO33"
+	(label "GPIO32"
 		(at 120.65 69.85 0)
 		(effects
 			(font
@@ -4702,7 +5008,7 @@
 		)
 		(uuid "d914d698-dfe6-4b49-8561-f92db4f470f8")
 	)
-	(label "GPIO32"
+	(label "GPIO33"
 		(at 120.65 67.31 0)
 		(effects
 			(font
@@ -4761,6 +5067,86 @@
 			(justify right bottom)
 		)
 		(uuid "f90018ab-864f-4b93-942a-466952d17d11")
+	)
+	(symbol
+		(lib_id "Jumper:Jumper_2_Bridged")
+		(at 105.41 165.1 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "07aeaf44-5152-4fba-b951-ba4a46de8b69")
+		(property "Reference" "JP1"
+			(at 105.41 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "5V_JUMPER"
+			(at 105.41 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "PCM_Jumper_AKL:Jumper_P7.62mm_D1.2mm"
+			(at 105.41 165.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 105.41 170.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Jumper, 2-pole, closed/bridged"
+			(at 105.41 172.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "bd1f34f6-ff0a-489c-89fb-98387ab330bf")
+		)
+		(pin "2"
+			(uuid "2b4bad30-76db-4b2c-93a2-ed9bcf80e17f")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "JP1")
+					(unit 1)
+				)
+			)
+		)
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -5529,6 +5915,84 @@
 			(project "IoT_O2_Concentrator"
 				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
 					(reference "J12")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 113.03 173.99 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "2d74c9c6-3873-483d-accc-02c158655a78")
+		(property "Reference" "#PWR013"
+			(at 113.03 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 113.03 179.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 113.03 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 113.03 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 113.03 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ce060e60-8b8f-4070-a522-059db68fb9b8")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "#PWR013")
 					(unit 1)
 				)
 			)
@@ -6444,6 +6908,86 @@
 		)
 	)
 	(symbol
+		(lib_id "Jumper:Jumper_2_Bridged")
+		(at 105.41 185.42 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "6dfde78b-3886-4f33-8426-a4a8bff0a9db")
+		(property "Reference" "JP3"
+			(at 105.41 180.34 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "5V_JUMPER"
+			(at 105.41 182.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "PCM_Jumper_AKL:Jumper_P10.16mm_D1.2mm"
+			(at 105.41 185.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 105.41 190.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Jumper, 2-pole, closed/bridged"
+			(at 105.41 193.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e88af296-6231-4eef-a232-d4b672208ed1")
+		)
+		(pin "2"
+			(uuid "5094bfb4-c846-4b67-9203-284e8d6e575d")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "JP3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "B3B-XH-A:B3B-XH-A")
 		(at 110.49 86.36 0)
 		(mirror y)
@@ -6679,6 +7223,86 @@
 			(project "IoT_O2_Concentrator"
 				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
 					(reference "J9")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Jumper:Jumper_2_Bridged")
+		(at 105.41 173.99 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "77755e37-3729-47ba-8ead-2ef56552f69f")
+		(property "Reference" "JP2"
+			(at 105.41 168.91 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND_JUMPER"
+			(at 105.41 171.45 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "PCM_Jumper_AKL:Jumper_P7.62mm_D1.2mm"
+			(at 105.41 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 105.41 179.07 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Jumper, 2-pole, closed/bridged"
+			(at 105.41 181.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5b952656-1623-4fb9-b633-7f99a709c0b1")
+		)
+		(pin "2"
+			(uuid "7f163dd9-c1eb-45fb-9a40-001451c15ff7")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "JP2")
 					(unit 1)
 				)
 			)
@@ -7103,6 +7727,86 @@
 			(project "IoT_O2_Concentrator"
 				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
 					(reference "J10")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Jumper:Jumper_2_Bridged")
+		(at 105.41 193.04 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "96249c70-3acf-42b7-94ba-182499fe4bba")
+		(property "Reference" "JP4"
+			(at 105.41 187.96 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "5V_JUMPER"
+			(at 105.41 190.5 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "PCM_Jumper_AKL:Jumper_P5.08mm_D1.2mm"
+			(at 105.41 193.04 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 105.41 198.12 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Jumper, 2-pole, closed/bridged"
+			(at 105.41 200.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f86d4509-86d2-4eb4-a143-8f925e5b50bc")
+		)
+		(pin "2"
+			(uuid "2738d6c9-ecb9-43b1-a17c-352b06adddbf")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "JP4")
 					(unit 1)
 				)
 			)
@@ -9067,6 +9771,84 @@
 			(project "IoT_O2_Concentrator"
 				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
 					(reference "J11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 97.79 173.99 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "fe08f872-ee22-46b1-8dc0-c75075a3cc74")
+		(property "Reference" "#PWR014"
+			(at 97.79 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 97.79 179.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 97.79 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 97.79 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 97.79 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1a5e9d33-29f8-49fc-800a-32b8e67d774f")
+		)
+		(instances
+			(project "IoT_O2_Concentrator"
+				(path "/d58ee686-de42-4c1f-8f52-8255d34f39fc"
+					(reference "#PWR014")
 					(unit 1)
 				)
 			)
