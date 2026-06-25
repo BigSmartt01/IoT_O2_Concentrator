@@ -1,12 +1,18 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <TinyGsmClient.h>
 #include "config.h"   // central config file
-// TODO: uncomment GSM include when SIM800L EVB is wired
-// #include <TinyGsmClient.h>
 
 // LCD setup
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, 20, 4);
+
+// UARTs
+HardwareSerial simSerial(1);   // SIM EVB on UART1
+HardwareSerial o2Serial(2);    // Oxygen sensor on UART2
+
+// GSM modem
+TinyGsm modem(simSerial);
 
 // === Shared Data Struct ===
 struct SensorData {
@@ -16,8 +22,13 @@ struct SensorData {
   unsigned long uptime;
 };
 
+static String gsmStatus       = "Idle";
+
 SensorData sharedData;
+
+// === Mutexes ===
 SemaphoreHandle_t dataMutex;
+SemaphoreHandle_t modemMutex;
 
 // === FreeRTOS Task Handles ===
 TaskHandle_t sensorTaskHandle;
@@ -26,6 +37,7 @@ TaskHandle_t alertTaskHandle;
 
 // === Setup ===
 void setup() {
+
   Serial.begin(115200);
 
   // Pin modes
@@ -38,8 +50,21 @@ void setup() {
   lcd.init();
   lcd.backlight();
 
+  // UART init
+  simSerial.begin(GSM_BAUD, SERIAL_8N1, SIM_RX_PIN, SIM_TX_PIN);    // SIM EVB
+  o2Serial.begin(O2_BAUD, SERIAL_8N1, O2_RX_PIN, O2_TX_PIN);        // Oxygen sensor
+
+  // GSM modem init
+  Serial.println("Initializing modem...");
+  modem.restart();
+
+  if (!modem.waitForNetwork(30000L)) {
+    Serial.println("Network not found, continuing anyway...");
+  }
+
   // Mutex init
-  dataMutex = xSemaphoreCreateMutex();
+  dataMutex  = xSemaphoreCreateMutex();
+  modemMutex = xSemaphoreCreateMutex();
 
   // Create tasks
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 0);
@@ -49,7 +74,9 @@ void setup() {
 
 // === Sensor Task (demo mode with potentiometer) ===
 void sensorTask(void *pvParameters) {
+
   for (;;) {
+    // Demo: read potentiometer as O2 %
     int adcValue = analogRead(POT_PIN); // 0–4095
     SensorData sensor;
     sensor.o2 = O2_MIN_PERCENT + (adcValue / ADC_MAX_VALUE) * (O2_MAX_PERCENT - O2_MIN_PERCENT);
@@ -68,6 +95,7 @@ void sensorTask(void *pvParameters) {
 
 // === Display Task ===
 void displayTask(void *pvParameters) {
+
   for (;;) {
     SensorData display;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
@@ -78,8 +106,9 @@ void displayTask(void *pvParameters) {
     lcd.setCursor(0, 0);
     lcd.print("O2: ");
     lcd.print(display.o2, 1);
-    lcd.print("% FL:");
+    lcd.print(" %  FL:");
     lcd.print(display.flow, 1);
+    lcd.print(" LPM");
 
     lcd.setCursor(0, 1);
     lcd.print("TMP: ");
@@ -93,8 +122,20 @@ void displayTask(void *pvParameters) {
     else if (display.o2 > O2_WARNING_MIN) lcd.print("STATUS: WARNING  ");
     else lcd.print("STATUS: DANGER   ");
 
+    int rssi = 0, simSt = 0;
+    if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(500))) {
+        rssi  = modem.getSignalQuality();
+        simSt = modem.getSimStatus();
+        xSemaphoreGive(modemMutex);
+    }
+
     lcd.setCursor(0, 3);
-    lcd.print("GSM: -- SIM: --  "); // Placeholder
+    lcd.print("GSM: ");
+    lcd.print(rssi);
+    lcd.print(" SIM: ");
+    lcd.print(simSt == 1 ? "OK  " : "FAIL");
+    lcd.print(" ");
+    lcd.print(gsmStatus);
 
     vTaskDelay(pdMS_TO_TICKS(DISPLAY_INTERVAL_MS));
   }
@@ -129,15 +170,29 @@ void alertTask(void *pvParameters) {
       warningCount  = 0;
       smsSent       = false;
       callMade      = false;
+      gsmStatus     = "Idle";
     }
 
     if (dangerCount >= 3) {
       digitalWrite(RELAY_PIN, HIGH);  // compressor off
       digitalWrite(BUZZER_PIN, HIGH); // continous buzzing
-      // TODO: uncomment GSM call when SIM800L EVB is wired
       if (!callMade) {
-      // modem.callNumber(CAREGIVER_NUMBER);
-      // callMade = true;
+        if (modem.isNetworkConnected()) {
+          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+            gsmStatus  = "Calling...";
+            if (modem.callNumber(CAREGIVER_NUMBER)) {
+              callMade = true;
+              gsmStatus = "Call Sent";
+              Serial.println("Call Sent");
+            } else {
+              gsmStatus = "Call Retry";
+              Serial.println("Call failed, will retry...");
+            }
+          }
+        } else {
+          gsmStatus = "Call Waiting Net...";
+          Serial.println("Network not connected, retrying call...");
+        }
       }
     }
     else if (warningCount >= 3) {
@@ -149,14 +204,30 @@ void alertTask(void *pvParameters) {
         digitalWrite(BUZZER_PIN, LOW);
         lastBuzz = millis();
       }
-      // TODO: uncomment GSM SMS when SIM800L EVB is wired
       if (!smsSent) {
-      // modem.sendSMS(CAREGIVER_NUMBER, "Warning: O2 low");
-      // smsSent = true;
+        if (modem.isNetworkConnected()) {
+          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+            gsmStatus = "SMS Pending...";
+            String msg = "ALERT: O2 purity low. Reading: ";
+            msg += String(alert.o2, 1);
+            msg += "%. Please check the concentrator.";
+            if (modem.sendSMS(CAREGIVER_NUMBER, msg.c_str())) {
+              smsSent = true;
+              gsmStatus = "SMS Sent";
+              Serial.println("SMS sent successfully.");
+            } else {
+              gsmStatus = "SMS Retry...";
+              Serial.println("SMS failed, will retry...");
+            }
+          }
+        } else {
+          gsmStatus = "SMS Waiting Net...";
+          Serial.println("Network not connected, retrying sms...");
+        }
       }
     }
     else {
-      digitalWrite(RELAY_PIN, LOW);  // compressor on in normal operation
+      digitalWrite(RELAY_PIN, LOW);   // compressor on in normal operation
       digitalWrite(BUZZER_PIN, LOW);  // buzzer off in normal operation
     }
 

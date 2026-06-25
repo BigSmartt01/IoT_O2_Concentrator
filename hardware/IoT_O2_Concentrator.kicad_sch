@@ -5220,7 +5220,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H20.0mm_P5.00mm"
+		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H12.5mm_P5.00mm"
 			(at 130.81 132.08 0)
 			(hide yes)
 			(show_name no)
@@ -7524,7 +7524,7 @@
 				)
 			)
 		)
-		(property "Value" "12V_SUPPLY_BUCK_IN"
+		(property "Value" "12V_BUCK_IN"
 			(at 111.76 123.19 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7870,7 +7870,7 @@
 				)
 			)
 		)
-		(property "Value" "AC-DC_MODULE"
+		(property "Value" "DC_MODULE"
 			(at 40.64 165.1 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8301,7 +8301,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "ESP32_DevKit_V1_DOIT_30GPIOs"
+		(property "Value" "ESP32_DevKit"
 			(at 226.06 55.88 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8848,7 +8848,7 @@
 				)
 			)
 		)
-		(property "Value" "5V_SUPPLY_BUCK_OUT"
+		(property "Value" "5V_BUCK_OUT"
 			(at 111.76 97.79 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9426,7 +9426,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H20.0mm_P5.00mm"
+		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H12.5mm_P5.00mm"
 			(at 130.81 106.68 0)
 			(hide yes)
 			(show_name no)
@@ -9595,7 +9595,7 @@
 				)
 			)
 		)
-		(property "Value" "O2_VCC_SELECTOR"
+		(property "Value" "O2_VCC_SEL"
 			(at 40.64 157.48 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9766,7 +9766,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H20.0mm_P5.00mm"
+		(property "Footprint" "Capacitor_THT:C_Radial_D10.0mm_H12.5mm_P5.00mm"
 			(at 64.77 115.57 0)
 			(hide yes)
 			(show_name no)

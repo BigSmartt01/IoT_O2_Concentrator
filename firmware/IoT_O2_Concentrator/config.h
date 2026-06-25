@@ -1,7 +1,14 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// === Pin Assignments ===
+// === UART Pin Assignments ===
+#define SIM_TX_PIN            14   // UART1 TX to SIM800L EVB SIM_RXD
+#define SIM_RX_PIN            13   // UART1 RX from SIM800L EVB SIM_TXD
+
+#define O2_TX_PIN            17   // UART2 TX to OXYGEN SENSOR_RXD
+#define O2_RX_PIN            16   // UART2 RX from OXYGEN SENSOR_TXD
+
+// === GPIO Pin Assignments ===
 #define RELAY_PIN             26   // Relay control GPIO
 #define BUZZER_PIN            27   // Buzzer GPIO
 #define POT_PIN               34   // ADC input for demo potentiometer
@@ -24,6 +31,9 @@
 #define GSM_BAUD              9600
 #define CAREGIVER_NUMBER      "+2348012345678" // Hard-coded caregiver number (demo)
 
+// === O2 Settings ===
+#define O2_BAUD               9600
+ 
 // === Demo Mode Mapping ===
 // Potentiometer ADC range mapped to O2 percentage
 #define O2_MIN_PERCENT        21.0
