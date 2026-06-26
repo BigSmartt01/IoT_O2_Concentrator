@@ -58,6 +58,8 @@ TaskHandle_t alertTaskHandle;
 TaskHandle_t gsmTaskHandle;
 TaskHandle_t configTaskHandle;
 
+bool sendWithRetry(std::function<bool()> action, int maxAttempts = 3);
+
 // === Setup ===
 void setup() {
 
@@ -247,13 +249,14 @@ void alertTask(void *pvParameters) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
             gsmState  = CALLING;
-            if (modem.callNumber(CAREGIVER_NUM)) {
+            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); });
+            if (ok) {
               callMade = true;
               gsmState = CALLED;
-              Serial.println("[GSM] Call Sent");
+              Serial.println("[GSM] Call placed successfully.");
             } else {
               gsmState = RETRY;
-              Serial.println("[GSM] Call failed, will retry...");
+              Serial.println("[GSM] Call failed after retries.");
             }
           } else {
             gsmState = WAIT;
@@ -281,13 +284,14 @@ void alertTask(void *pvParameters) {
             String msg = "ALERT: O2 purity low. Reading: ";
             msg += String(alert.o2, 1);
             msg += "%. Please check the concentrator.";
-            if (modem.sendSMS(CAREGIVER_NUM, msg.c_str())) {
+            bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); });
+            if (ok) {
               smsSent = true;
               gsmState = SENT;
               Serial.println("[GSM] SMS sent successfully.");
             } else {
               gsmState = RETRY;
-              Serial.println("[GSM] SMS failed, will retry...");
+              Serial.println("[GSM] SMS failed after retries.");
             }
           } else {
             gsmState = WAIT;
@@ -396,12 +400,17 @@ void configTask(void *pvParameters) {
         Serial.printf("[CONFIG] Caregiver number set to %s\n", num.c_str());
       }
       else if (cmd.equalsIgnoreCase("HELP")) {
-        String helpMsg = "Commands:\n"
-                         "SET WARN <value>\n"
-                         "SET NORM <value>\n"
-                         "SET NUM <number>";
-        Serial.printf("[CONFIG] HELP\n %s\n", helpMsg.c_str());
+        Serial.println("[CONFIG] HELP\nCommands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS");
         }
+      else if (cmd.equalsIgnoreCase("STATUS")) {
+        SensorData snapshot;
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+          snapshot = sharedData;
+          xSemaphoreGive(dataMutex);
+        }
+        Serial.printf("[CONFIG] STATUS\nO2: %.1f%%\nWarn: %.1f%%\nNorm: %.1f%%\n",
+                      snapshot.o2, O2_WARNING_MIN, O2_NORMAL_MIN);
+      }
     }
 
     // --- SMS Commands ---
@@ -412,7 +421,6 @@ void configTask(void *pvParameters) {
         modem.sendAT("+CMGL=\"REC UNREAD\""); // list unread SMS
         String resp;
         modem.waitResponse(2000, resp); // capture modem reply
-        xSemaphoreGive(modemMutex);
 
         int headerPos = resp.indexOf("+CMGL:");
         while (headerPos != -1) {
@@ -437,69 +445,87 @@ void configTask(void *pvParameters) {
           String body = resp.substring(bodyStart+2, bodyEnd);
           body.trim();
 
-          // Parse commands
+          // Parse commands + feedback SMS
+          String feedback;
           if (body.startsWith("SET WARN ")) {
             float val = body.substring(9).toFloat();
             prefs.putFloat("o2_warn_min", val);
             O2_WARNING_MIN = val;
+            feedback = "Warning threshold updated.";
             Serial.printf("[SMS CONFIG] Warning threshold set to %.1f%%\n", val);
-            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
-              modem.sendSMS(sender, "Warning threshold updated.");
-              xSemaphoreGive(modemMutex);
-            }
           }
           else if (body.startsWith("SET NORM ")) {
             float val = body.substring(9).toFloat();
             prefs.putFloat("o2_norm_min", val);
             O2_NORMAL_MIN = val;
+            feedback = "Normal threshold updated.";
             Serial.printf("[SMS CONFIG] Normal threshold set to %.1f%%\n", val);
-            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
-              modem.sendSMS(sender, "Normal threshold updated.");
-              xSemaphoreGive(modemMutex);
-            }
           }
           else if (body.startsWith("SET NUM ")) {
             String num = body.substring(8);
             prefs.putString("caregiver_num", num);
             CAREGIVER_NUM = num;
+            feedback = "Caregiver number updated.";
             Serial.printf("[SMS CONFIG] Caregiver number set to %s\n", num.c_str());
-            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
-              modem.sendSMS(sender, "Caregiver number updated.");
-              xSemaphoreGive(modemMutex);
-            }
           }
           else if (body.equalsIgnoreCase("HELP")) {
-          String helpMsg = "Commands:\n"
-                          "SET WARN <value>\n"
-                          "SET NORM <value>\n"
-                          "SET NUM <number>";
-          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
-            modem.sendSMS(sender, helpMsg);
-            xSemaphoreGive(modemMutex);
-          }
+          feedback = "Commands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS";
           Serial.println("[SMS CONFIG] Help message sent.");
+          }
+          else if (body.equalsIgnoreCase("STATUS")) {
+            SensorData snapshot;
+            if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+              snapshot = sharedData;
+              xSemaphoreGive(dataMutex);
+            }
+            feedback = "STATUS:\nO2=" + String(snapshot.o2,1) + "%\nWarn=" +
+                       String(O2_WARNING_MIN,1) + "%\nNorm=" +
+                       String(O2_NORMAL_MIN,1) + "%";
+          }
+
+          // Send feedback if any
+          if (feedback.length() > 0) {
+            bool ok = sendWithRetry([&](){ return modem.sendSMS(sender, feedback); });
+            if (ok) {
+              Serial.println("[SMS CONFIG] Feedback sent successfully.");
+            } else {
+              Serial.println("[SMS CONFIG] Feedback failed after retries.");
+            }
           }
 
           // Delete SMS so it doesn’t repeat
-          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
-            modem.sendAT("+CMGD=", smsIndex); // delete by index
-            String delResp;
-            modem.waitResponse(1000, delResp);  // capture response into delResp
-            Serial.println("[SMS CONFIG] Delete response: " + delResp);
-            xSemaphoreGive(modemMutex);
-          }
+          modem.sendAT("+CMGD=", smsIndex); // delete by index
+          String delResp;
+          modem.waitResponse(1000, delResp);  // capture response into delResp
+          Serial.println("[SMS CONFIG] Delete response: " + delResp);
 
           // Find next SMS entry
           headerPos = resp.indexOf("+CMGL:", bodyEnd);
         }
+
+        xSemaphoreGive(modemMutex);
       }
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
-
-
+// Example retry wrapper for SMS or call
+bool sendWithRetry(std::function<bool()> action, int maxAttempts) {
+  int attempt = 0;
+  int delayMs = 1000; // start with 1s
+  while (attempt < maxAttempts) {
+    if (action()) {
+      return true; // success
+    }
+    attempt++;
+    Serial.printf("[RETRY] Attempt %d failed, backing off...\n", attempt);
+    vTaskDelay(pdMS_TO_TICKS(delayMs));
+    delayMs *= 2; // exponential backoff
+    if (delayMs > 10000) delayMs = 10000; // cap at 10s
+  }
+  return false; // all attempts failed
+}
 
 void loop() {
   vTaskDelay(portMAX_DELAY); // everything runs in tasks

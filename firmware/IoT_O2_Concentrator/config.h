@@ -7,8 +7,8 @@
 #define SIM_TX_PIN            14   // UART1 TX to SIM800L EVB SIM_RXD
 #define SIM_RX_PIN            13   // UART1 RX from SIM800L EVB SIM_TXD
 
-#define O2_TX_PIN            17   // UART2 TX to OXYGEN SENSOR_RXD
-#define O2_RX_PIN            16   // UART2 RX from OXYGEN SENSOR_TXD
+#define O2_TX_PIN             17   // UART2 TX to OXYGEN SENSOR_RXD
+#define O2_RX_PIN             16   // UART2 RX from OXYGEN SENSOR_TXD
 
 // === GPIO Pin Assignments ===
 #define RELAY_PIN             26   // Relay control GPIO
@@ -17,8 +17,8 @@
 #define LCD_I2C_ADDR          0x27 // Default I2C address (change to 0x3F if needed)
 
 // === Thresholds ===
-extern float O2_NORMAL_MIN           // Above this = NORMAL
-extern float O2_WARNING_MIN          // Between 70–85 = WARNING, Below this = DANGER
+extern float O2_NORMAL_MIN;           // Above this = NORMAL
+extern float O2_WARNING_MIN;          // Between 70–85 = WARNING, Below this = DANGER
 
 // === Timing ===
 #define SENSOR_INTERVAL_MS    500  // Sensor update interval
@@ -30,7 +30,7 @@ extern float O2_WARNING_MIN          // Between 70–85 = WARNING, Below this = 
 // === GSM Settings ===
 // Uncomment TinyGSM include in main sketch when SIM800L EVB is wired
 #define GSM_BAUD              9600
-extern String CAREGIVER_NUM   // Hard-coded caregiver number (demo)
+extern String CAREGIVER_NUM;   // Hard-coded caregiver number (demo)
 
 // === O2 Settings ===
 #define O2_BAUD               9600
