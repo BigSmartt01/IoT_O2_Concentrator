@@ -1,11 +1,15 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <Preferences.h>
 #include "config.h"   // central config file
 #include <TinyGsmClient.h>
 
 // LCD setup
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, 20, 4);
+
+// NVS
+Preferences prefs;
 
 // UARTs
 HardwareSerial simSerial(1);   // SIM EVB on UART1
@@ -21,6 +25,10 @@ struct SensorData {
   float temp;
   unsigned long uptime;
 };
+
+float O2_NORMAL_MIN     = 85.0;   // default
+float O2_WARNING_MIN    = 70.0;   // default
+String CAREGIVER_NUM    = "+2349036644559"; // default
 
 // GSM state machine
 enum GsmState : uint8_t {
@@ -48,11 +56,20 @@ TaskHandle_t sensorTaskHandle;
 TaskHandle_t displayTaskHandle;
 TaskHandle_t alertTaskHandle;
 TaskHandle_t gsmTaskHandle;
+TaskHandle_t configTaskHandle;
 
 // === Setup ===
 void setup() {
 
   Serial.begin(115200);
+
+  prefs.begin("config", false); // namespace "config"
+
+  // Load thresholds and caregiver number from NVS, or use defaults if not set
+  O2_WARNING_MIN      = prefs.getFloat("o2_warn_min", O2_WARNING_MIN);
+  O2_NORMAL_MIN       = prefs.getFloat("o2_norm_min", O2_NORMAL_MIN);
+  CAREGIVER_NUM    = prefs.getString("caregiver_num", CAREGIVER_NUM);
+
 
   // Pin modes
   pinMode(RELAY_PIN, OUTPUT);
@@ -76,6 +93,7 @@ void setup() {
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 0);
   xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, &displayTaskHandle, 0);
   xTaskCreatePinnedToCore(gsmTask, "GSMTask", 4096, NULL, 1, &gsmTaskHandle, 1);
+  xTaskCreatePinnedToCore(configTask, "ConfigTask", 4096, NULL, 1, &configTaskHandle, 1);
   xTaskCreatePinnedToCore(alertTask, "AlertTask", 8192, NULL, 2, &alertTaskHandle, 1);
 }
 
@@ -229,7 +247,7 @@ void alertTask(void *pvParameters) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
             gsmState  = CALLING;
-            if (modem.callNumber(CAREGIVER_NUMBER)) {
+            if (modem.callNumber(CAREGIVER_NUM)) {
               callMade = true;
               gsmState = CALLED;
               Serial.println("[GSM] Call Sent");
@@ -263,7 +281,7 @@ void alertTask(void *pvParameters) {
             String msg = "ALERT: O2 purity low. Reading: ";
             msg += String(alert.o2, 1);
             msg += "%. Please check the concentrator.";
-            if (modem.sendSMS(CAREGIVER_NUMBER, msg.c_str())) {
+            if (modem.sendSMS(CAREGIVER_NUM, msg.c_str())) {
               smsSent = true;
               gsmState = SENT;
               Serial.println("[GSM] SMS sent successfully.");
@@ -351,6 +369,137 @@ void sensorTask(void *pvParameters) {
   }
 }
 */
+
+void configTask(void *pvParameters) {
+  for (;;) {
+    // --- USB Serial Commands ---
+    if (Serial.available()) {
+      String cmd = Serial.readStringUntil('\n');
+      cmd.trim();
+
+      if (cmd.startsWith("SET WARN ")) {
+        float val = cmd.substring(9).toFloat();
+        prefs.putFloat("o2_warn_min", val);
+        O2_WARNING_MIN = val;
+        Serial.printf("[CONFIG] Warning threshold set to %.1f%%\n", val);
+      }
+      else if (cmd.startsWith("SET NORM ")) {
+        float val = cmd.substring(9).toFloat();
+        prefs.putFloat("o2_norm_min", val);
+        O2_NORMAL_MIN = val;
+        Serial.printf("[CONFIG] Normal threshold set to %.1f%%\n", val);
+      }
+      else if (cmd.startsWith("SET NUM ")) {
+        String num = cmd.substring(8);
+        prefs.putString("caregiver_num", num);
+        CAREGIVER_NUM = num;
+        Serial.printf("[CONFIG] Caregiver number set to %s\n", num.c_str());
+      }
+      else if (cmd.equalsIgnoreCase("HELP")) {
+        String helpMsg = "Commands:\n"
+                         "SET WARN <value>\n"
+                         "SET NORM <value>\n"
+                         "SET NUM <number>";
+        Serial.printf("[CONFIG] HELP\n %s\n", helpMsg.c_str());
+        }
+    }
+
+    // --- SMS Commands ---
+    if (gsmState == READY || gsmState == IDLE || gsmState == SENT || gsmState == CALLED) {
+      if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+        modem.sendAT("+CMGF=1"); // set text mode
+        modem.waitResponse(); // consume OK for CMGF
+        modem.sendAT("+CMGL=\"REC UNREAD\""); // list unread SMS
+        String resp;
+        modem.waitResponse(2000, resp); // capture modem reply
+        xSemaphoreGive(modemMutex);
+
+        int headerPos = resp.indexOf("+CMGL:");
+        while (headerPos != -1) {
+          // Extract SMS index
+          int colonPos = resp.indexOf(":", headerPos);
+          int commaPos = resp.indexOf(",", colonPos);
+          String idxStr = resp.substring(colonPos+1, commaPos);
+          idxStr.trim(); // remove spaces
+          int smsIndex = idxStr.toInt();
+
+          // Extract sender number
+          int quote1 = resp.indexOf("\"", headerPos);
+          int quote2 = resp.indexOf("\"", quote1+1);
+          int quote3 = resp.indexOf("\"", quote2+1);
+          int quote4 = resp.indexOf("\"", quote3+1);
+          String sender = resp.substring(quote3+1, quote4);
+
+          // Extract body (line after header)
+          int bodyStart = resp.indexOf("\r\n", headerPos);
+          int bodyEnd   = resp.indexOf("\r\n", bodyStart+2);
+          if (bodyEnd == -1) break;
+          String body = resp.substring(bodyStart+2, bodyEnd);
+          body.trim();
+
+          // Parse commands
+          if (body.startsWith("SET WARN ")) {
+            float val = body.substring(9).toFloat();
+            prefs.putFloat("o2_warn_min", val);
+            O2_WARNING_MIN = val;
+            Serial.printf("[SMS CONFIG] Warning threshold set to %.1f%%\n", val);
+            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+              modem.sendSMS(sender, "Warning threshold updated.");
+              xSemaphoreGive(modemMutex);
+            }
+          }
+          else if (body.startsWith("SET NORM ")) {
+            float val = body.substring(9).toFloat();
+            prefs.putFloat("o2_norm_min", val);
+            O2_NORMAL_MIN = val;
+            Serial.printf("[SMS CONFIG] Normal threshold set to %.1f%%\n", val);
+            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+              modem.sendSMS(sender, "Normal threshold updated.");
+              xSemaphoreGive(modemMutex);
+            }
+          }
+          else if (body.startsWith("SET NUM ")) {
+            String num = body.substring(8);
+            prefs.putString("caregiver_num", num);
+            CAREGIVER_NUM = num;
+            Serial.printf("[SMS CONFIG] Caregiver number set to %s\n", num.c_str());
+            if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+              modem.sendSMS(sender, "Caregiver number updated.");
+              xSemaphoreGive(modemMutex);
+            }
+          }
+          else if (body.equalsIgnoreCase("HELP")) {
+          String helpMsg = "Commands:\n"
+                          "SET WARN <value>\n"
+                          "SET NORM <value>\n"
+                          "SET NUM <number>";
+          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+            modem.sendSMS(sender, helpMsg);
+            xSemaphoreGive(modemMutex);
+          }
+          Serial.println("[SMS CONFIG] Help message sent.");
+          }
+
+          // Delete SMS so it doesn’t repeat
+          if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+            modem.sendAT("+CMGD=", smsIndex); // delete by index
+            String delResp;
+            modem.waitResponse(1000, delResp);  // capture response into delResp
+            Serial.println("[SMS CONFIG] Delete response: " + delResp);
+            xSemaphoreGive(modemMutex);
+          }
+
+          // Find next SMS entry
+          headerPos = resp.indexOf("+CMGL:", bodyEnd);
+        }
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
+}
+
+
+
 
 void loop() {
   vTaskDelay(portMAX_DELAY); // everything runs in tasks
