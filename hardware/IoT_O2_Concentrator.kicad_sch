@@ -8,7 +8,7 @@
 		(title "IoT_O2_Concentrator")
 		(date "2026-06-24")
 		(rev "1.0")
-		(company "BigSmartt")
+		(company "---")
 	)
 	(lib_symbols
 		(symbol "B2B-XH-A:B2B-XH-A"
