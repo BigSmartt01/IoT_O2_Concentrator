@@ -3,6 +3,10 @@
 
 #define TINY_GSM_MODEM_SIM800
 
+// === I2C Pin Assignments ===
+#define I2C_SDA_PIN           21
+#define I2C_SCL_PIN           22
+
 // === UART Pin Assignments ===
 #define SIM_TX_PIN            14   // UART1 TX to SIM800L EVB SIM_RXD
 #define SIM_RX_PIN            13   // UART1 RX from SIM800L EVB SIM_TXD

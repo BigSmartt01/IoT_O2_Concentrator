@@ -80,6 +80,7 @@ void setup() {
   digitalWrite(BUZZER_PIN, LOW);  // buzzer OFF by default
 
   // LCD init
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
   lcd.init();
   lcd.backlight();
 
