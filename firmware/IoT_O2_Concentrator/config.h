@@ -47,7 +47,7 @@ extern String CAREGIVER_NUM;   // Hard-coded caregiver number (demo)
 
 // === WiFi Captive Portal (demo input mode) ===
 #define WIFI_AP_SSID          "O2-Controller"
-#define WIFI_AP_PASS          "123456"
+#define WIFI_AP_PASS          "12345678"
 #define WIFI_AP_IP            "192.168.4.1"
 
 #endif
