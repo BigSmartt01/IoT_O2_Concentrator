@@ -3,7 +3,11 @@
 #include <LiquidCrystal_I2C.h>
 #include <Preferences.h>
 #include "config.h"   // central config file
+#include "portal_html.h"
 #include <TinyGsmClient.h>
+#include <WiFi.h>
+#include <DNSServer.h>
+#include <ESPAsyncWebServer.h>
 
 // LCD setup
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, 20, 4);
@@ -47,6 +51,14 @@ volatile GsmState gsmState = IDLE;
 
 SensorData sharedData;
 
+// === Input mode (always boots to potentiometer; not stored in NVS) ===
+enum InputMode : uint8_t { MODE_POT = 0, MODE_WIFI = 1, MODE_SENSOR = 2 };
+volatile InputMode inputMode = MODE_POT;
+
+// === Captive portal / WiFi demo server ===
+AsyncWebServer server(80);
+DNSServer dnsServer;
+
 // === Mutexes ===
 SemaphoreHandle_t dataMutex;
 SemaphoreHandle_t modemMutex;
@@ -57,13 +69,15 @@ TaskHandle_t displayTaskHandle;
 TaskHandle_t alertTaskHandle;
 TaskHandle_t gsmTaskHandle;
 TaskHandle_t configTaskHandle;
+TaskHandle_t webTaskHandle;
 
-bool sendWithRetry(std::function<bool()> action, int maxAttempts = 3);
+bool sendWithRetry(std::function<bool()> action, int maxAttempts = 3, const char *tag = "RETRY");
 
 // === Setup ===
 void setup() {
 
   Serial.begin(115200);
+  Serial.println("[SETUP] Booting IoT O2 Concentrator...");
 
   prefs.begin("config", false); // namespace "config"
 
@@ -95,29 +109,194 @@ void setup() {
   // Create tasks
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 0);
   xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, &displayTaskHandle, 0);
+  xTaskCreatePinnedToCore(webTask, "WebTask", 8192, NULL, 2, &webTaskHandle, 0);
   xTaskCreatePinnedToCore(gsmTask, "GSMTask", 4096, NULL, 1, &gsmTaskHandle, 1);
   xTaskCreatePinnedToCore(configTask, "ConfigTask", 4096, NULL, 1, &configTaskHandle, 1);
   xTaskCreatePinnedToCore(alertTask, "AlertTask", 8192, NULL, 2, &alertTaskHandle, 1);
+  Serial.println("[SETUP] All FreeRTOS tasks created.");
 }
 
-// === Sensor Task (demo mode with potentiometer) ===
+// === Sensor Task (input mode: pot / wifi / real sensor) ===
 void sensorTask(void *pvParameters) {
+  uint8_t buf[12];
+  uint8_t idx = 0;
 
   for (;;) {
-    // Demo: read potentiometer as O2 %
-    int adcValue = analogRead(POT_PIN); // 0–4095
-    SensorData sensor;
-    sensor.o2 = O2_MIN_PERCENT + (adcValue / ADC_MAX_VALUE) * (O2_MAX_PERCENT - O2_MIN_PERCENT);
-    sensor.flow = 0.0; // demo only
-    sensor.temp = 25.0; // demo only
-    sensor.uptime = millis() / 1000;
+    switch (inputMode) {
 
+      case MODE_POT: {
+        // Demo: read potentiometer as O2 %
+        int adcValue = analogRead(POT_PIN); // 0–4095
+        SensorData sensor;
+        sensor.o2 = O2_MIN_PERCENT + (adcValue / ADC_MAX_VALUE) * (O2_MAX_PERCENT - O2_MIN_PERCENT);
+        sensor.flow = 0.0;
+        sensor.temp = 25.0;
+        sensor.uptime = millis() / 1000;
+
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+          sharedData = sensor;
+          xSemaphoreGive(dataMutex);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+        break;
+      }
+
+      case MODE_WIFI: {
+        // Slider values are written by /update; only refresh uptime here
+        if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+          sharedData.uptime = millis() / 1000;
+          xSemaphoreGive(dataMutex);
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+        break;
+      }
+
+      case MODE_SENSOR: {
+        // Non-blocking UART2 drain, parse 12-byte OCS-3FL2.0 packets
+        while (o2Serial.available()) {
+          uint8_t b = o2Serial.read();
+
+          // Hunt for header: 0x16, 0x09, 0x01
+          if (idx == 0 && b != 0x16) continue;
+          if (idx == 1 && b != 0x09) { idx = 0; continue; }
+          if (idx == 2 && b != 0x01) { idx = 0; continue; }
+
+          buf[idx++] = b;
+
+          if (idx == 12) {
+            idx = 0;
+
+            // Checksum: sum of all 12 bytes must be 0 (mod 256)
+            uint8_t cs = 0;
+            for (int i = 0; i < 12; i++) cs += buf[i];
+
+            if (cs != 0) {
+              Serial.println("[SENSOR] Checksum failed, packet discarded.");
+              continue;
+            }
+
+            SensorData sensor;
+            sensor.o2     = ((buf[3] << 8) | buf[4]) / 10.0f;
+            sensor.flow   = ((buf[5] << 8) | buf[6]) / 10.0f;
+            sensor.temp   = ((buf[7] << 8) | buf[8]) / 10.0f;
+            sensor.uptime = millis() / 1000;
+
+            // Sanity check - discard physically impossible readings
+            if (sensor.o2 < 15.0f || sensor.o2 > 100.0f) {
+              Serial.println("[SENSOR] O2 out of range, packet discarded.");
+              continue;
+            }
+
+            if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+              sharedData = sensor;
+              xSemaphoreGive(dataMutex);
+            }
+
+            Serial.printf("[SENSOR] O2: %.1f%%  Flow: %.1f LPM  Temp: %.1fc\n",
+                          sensor.o2, sensor.flow, sensor.temp);
+          }
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+        break;
+      }
+
+      default:
+        vTaskDelay(pdMS_TO_TICKS(500));
+        break;
+    }
+  }
+}
+
+// === Web Task (captive portal AP + DNS + AsyncWebServer) ===
+void webTask(void *pvParameters) {
+  Serial.println("[WEB] Starting WiFi AP...");
+
+  WiFi.mode(WIFI_AP);
+  IPAddress apIP(192, 168, 4, 1);
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+  WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS);
+
+  // DNS: redirect all hostnames to the AP IP (captive portal)
+  dnsServer.start(53, "*", apIP);
+  Serial.printf("[WEB] AP SSID=%s IP=%s\n", WIFI_AP_SSID, WIFI_AP_IP);
+
+  // --- Routes ---
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/html", PORTAL_HTML);
+  });
+
+  server.on("/setMode", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("mode")) {
+      String mode = request->getParam("mode")->value();
+      mode.toLowerCase();
+      if (mode == "pot") {
+        inputMode = MODE_POT;
+        Serial.println("[WEB] Input mode: POT");
+      } else if (mode == "wifi") {
+        inputMode = MODE_WIFI;
+        Serial.println("[WEB] Input mode: WIFI");
+      } else if (mode == "sensor") {
+        inputMode = MODE_SENSOR;
+        Serial.println("[WEB] Input mode: SENSOR");
+      }
+    }
+    request->send(200, "text/plain", "OK");
+  });
+
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+    // Only apply slider values while WiFi demo mode is active
+    if (inputMode == MODE_WIFI) {
+      if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+        if (request->hasParam("purity")) {
+          sharedData.o2 = request->getParam("purity")->value().toFloat();
+        }
+        if (request->hasParam("flow")) {
+          sharedData.flow = request->getParam("flow")->value().toFloat();
+        }
+        if (request->hasParam("temp")) {
+          sharedData.temp = request->getParam("temp")->value().toFloat();
+        }
+        xSemaphoreGive(dataMutex);
+      }
+    }
+    request->send(200, "text/plain", "OK");
+  });
+
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    SensorData snap;
+    InputMode mode = inputMode;
     if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-      sharedData = sensor;
+      snap = sharedData;
       xSemaphoreGive(dataMutex);
     }
 
-    vTaskDelay(pdMS_TO_TICKS(SENSOR_INTERVAL_MS));
+    const char *modeStr = "pot";
+    if (mode == MODE_WIFI) modeStr = "wifi";
+    else if (mode == MODE_SENSOR) modeStr = "sensor";
+
+    char json[128];
+    snprintf(json, sizeof(json),
+             "{\"mode\":\"%s\",\"o2\":%.1f,\"flow\":%.1f,\"temp\":%.1f}",
+             modeStr, snap.o2, snap.flow, snap.temp);
+    request->send(200, "application/json", json);
+  });
+
+  // Captive-portal detection endpoints (Android / iOS / Windows)
+  auto captiveRedirect = [](AsyncWebServerRequest *request) {
+    request->redirect("http://192.168.4.1");
+  };
+  server.on("/generate_204", HTTP_GET, captiveRedirect);
+  server.on("/hotspot-detect.html", HTTP_GET, captiveRedirect);
+  server.on("/connecttest.txt", HTTP_GET, captiveRedirect);
+  server.on("/redirect", HTTP_GET, captiveRedirect);
+
+  server.begin();
+  Serial.println("[WEB] AsyncWebServer started on port 80");
+
+  for (;;) {
+    dnsServer.processNextRequest();
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 
@@ -166,7 +345,7 @@ void displayTask(void *pvParameters) {
     snprintf(row4, sizeof(row4), "G:%2d S:%s %-7s", rssi, simSt==1?"OK":"NO", gsmStateStr[gsmState]);
     lcd.print(row4);
 
-    vTaskDelay(pdMS_TO_TICKS(DISPLAY_INTERVAL_MS));
+    vTaskDelay(pdMS_TO_TICKS(DISPLAY_INTERVAL_MS)); // 500ms
   }
 }
 
@@ -250,18 +429,18 @@ void alertTask(void *pvParameters) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
             gsmState  = CALLING;
-            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); });
+            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); }, 3, "ALERT");
             if (ok) {
               callMade = true;
               gsmState = CALLED;
-              Serial.println("[GSM] Call placed successfully.");
+              Serial.println("[ALERT] Call placed successfully.");
             } else {
               gsmState = RETRY;
-              Serial.println("[GSM] Call failed after retries.");
+              Serial.println("[ALERT] Call failed after retries.");
             }
           } else {
             gsmState = WAIT;
-            Serial.println("Network not connected, retrying call...");
+            Serial.println("[ALERT] Network not connected, retrying call...");
           } 
           xSemaphoreGive(modemMutex);
         }
@@ -285,18 +464,18 @@ void alertTask(void *pvParameters) {
             String msg = "ALERT: O2 purity low. Reading: ";
             msg += String(alert.o2, 1);
             msg += "%. Please check the concentrator.";
-            bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); });
+            bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); }, 3, "ALERT");
             if (ok) {
               smsSent = true;
               gsmState = SENT;
-              Serial.println("[GSM] SMS sent successfully.");
+              Serial.println("[ALERT] SMS sent successfully.");
             } else {
               gsmState = RETRY;
-              Serial.println("[GSM] SMS failed after retries.");
+              Serial.println("[ALERT] SMS failed after retries.");
             }
           } else {
             gsmState = WAIT;
-            Serial.println("[GSM] Network not connected, retrying sms...");
+            Serial.println("[ALERT] Network not connected, retrying SMS...");
           } 
           xSemaphoreGive(modemMutex);
         }
@@ -307,73 +486,9 @@ void alertTask(void *pvParameters) {
       digitalWrite(BUZZER_PIN, LOW);  // buzzer off in normal operation
     }
 
-    vTaskDelay(pdMS_TO_TICKS(ALERT_INTERVAL_MS));
+    vTaskDelay(pdMS_TO_TICKS(ALERT_INTERVAL_MS)); // 1000ms
   }
 }
-
-/*
-============================================================
-=== SENSOR TASK (OCS-3FL2.0 - swap in when sensor arrives)
-=== Replace the entire sensorTask block above with this
-=== Reads UART2, parses 9-byte packet, validates checksum
-============================================================
-
-void sensorTask(void *pvParameters) {
-  uint8_t buf[12];
-  uint8_t idx = 0;
-
-  for (;;) {
-    // Drain available bytes into buffer
-    while (o2Serial.available()) {
-      uint8_t b = o2Serial.read();
-
-      // Hunt for header start
-      if (idx == 0 && b != 0x16) continue;
-      if (idx == 1 && b != 0x09) { idx = 0; continue; }
-      if (idx == 2 && b != 0x01) { idx = 0; continue; }
-
-      buf[idx++] = b;
-
-      if (idx == 12) {
-        idx = 0;
-
-        // Checksum: sum of all 12 bytes must be 0 (mod 256)
-        uint8_t cs = 0;
-        for (int i = 0; i < 12; i++) cs += buf[i];
-
-        if (cs != 0) {
-          Serial.println("[SENSOR] Checksum failed, packet discarded.");
-          continue;
-        }
-
-        // Extract values
-        SensorData sensor;
-        sensor.o2   = ((buf[3] << 8) | buf[4]) / 10.0f;
-        sensor.flow = ((buf[5] << 8) | buf[6]) / 10.0f;
-        sensor.temp = ((buf[7] << 8) | buf[8]) / 10.0f;
-        sensor.uptime = millis() / 1000;
-
-        // Sanity check - discard physically impossible readings
-        if (sensor.o2 < 15.0f || sensor.o2 > 100.0f) {
-          Serial.println("[SENSOR] O2 out of range, packet discarded.");
-          continue;
-        }
-
-        if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
-          sharedData = sensor;
-          xSemaphoreGive(dataMutex);
-        }
-
-        Serial.printf("[SENSOR] O2: %.1f%%  Flow: %.1f LPM  Temp: %.1fc\n",
-                      sensor.o2, sensor.flow, sensor.temp);
-      }
-    }
-
-    // Sensor transmits every 500ms, yield briefly to not starve other tasks
-    vTaskDelay(pdMS_TO_TICKS(50));
-  }
-}
-*/
 
 void configTask(void *pvParameters) {
   for (;;) {
@@ -409,8 +524,9 @@ void configTask(void *pvParameters) {
           snapshot = sharedData;
           xSemaphoreGive(dataMutex);
         }
-        Serial.printf("[CONFIG] STATUS\nO2: %.1f%%\nWarn: %.1f%%\nNorm: %.1f%%\n",
-                      snapshot.o2, O2_WARNING_MIN, O2_NORMAL_MIN);
+        Serial.printf("[CONFIG] STATUS\nO2: %.1f%%\nFlow: %.1f LPM\nTemp: %.1fC\nWarn: %.1f%%\nNorm: %.1f%%\n",
+                      snapshot.o2, snapshot.flow, snapshot.temp,
+                      O2_WARNING_MIN, O2_NORMAL_MIN);
       }
     }
 
@@ -453,25 +569,25 @@ void configTask(void *pvParameters) {
             prefs.putFloat("o2_warn_min", val);
             O2_WARNING_MIN = val;
             feedback = "Warning threshold updated.";
-            Serial.printf("[SMS CONFIG] Warning threshold set to %.1f%%\n", val);
+            Serial.printf("[CONFIG] SMS: Warning threshold set to %.1f%%\n", val);
           }
           else if (body.startsWith("SET NORM ")) {
             float val = body.substring(9).toFloat();
             prefs.putFloat("o2_norm_min", val);
             O2_NORMAL_MIN = val;
             feedback = "Normal threshold updated.";
-            Serial.printf("[SMS CONFIG] Normal threshold set to %.1f%%\n", val);
+            Serial.printf("[CONFIG] SMS: Normal threshold set to %.1f%%\n", val);
           }
           else if (body.startsWith("SET NUM ")) {
             String num = body.substring(8);
             prefs.putString("caregiver_num", num);
             CAREGIVER_NUM = num;
             feedback = "Caregiver number updated.";
-            Serial.printf("[SMS CONFIG] Caregiver number set to %s\n", num.c_str());
+            Serial.printf("[CONFIG] SMS: Caregiver number set to %s\n", num.c_str());
           }
           else if (body.equalsIgnoreCase("HELP")) {
           feedback = "Commands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS";
-          Serial.println("[SMS CONFIG] Help message sent.");
+          Serial.println("[CONFIG] SMS: Help message sent.");
           }
           else if (body.equalsIgnoreCase("STATUS")) {
             SensorData snapshot;
@@ -479,18 +595,20 @@ void configTask(void *pvParameters) {
               snapshot = sharedData;
               xSemaphoreGive(dataMutex);
             }
-            feedback = "STATUS:\nO2=" + String(snapshot.o2,1) + "%\nWarn=" +
-                       String(O2_WARNING_MIN,1) + "%\nNorm=" +
-                       String(O2_NORMAL_MIN,1) + "%";
+            feedback = "STATUS:\nO2=" + String(snapshot.o2, 1) + "%\nFlow=" +
+                       String(snapshot.flow, 1) + " LPM\nTemp=" +
+                       String(snapshot.temp, 1) + "C\nWarn=" +
+                       String(O2_WARNING_MIN, 1) + "%\nNorm=" +
+                       String(O2_NORMAL_MIN, 1) + "%";
           }
 
           // Send feedback if any
           if (feedback.length() > 0) {
-            bool ok = sendWithRetry([&](){ return modem.sendSMS(sender, feedback); });
+            bool ok = sendWithRetry([&](){ return modem.sendSMS(sender, feedback); }, 3, "CONFIG");
             if (ok) {
-              Serial.println("[SMS CONFIG] Feedback sent successfully.");
+              Serial.println("[CONFIG] SMS: Feedback sent successfully.");
             } else {
-              Serial.println("[SMS CONFIG] Feedback failed after retries.");
+              Serial.println("[CONFIG] SMS: Feedback failed after retries.");
             }
           }
 
@@ -498,7 +616,7 @@ void configTask(void *pvParameters) {
           modem.sendAT("+CMGD=", smsIndex); // delete by index
           String delResp;
           modem.waitResponse(1000, delResp);  // capture response into delResp
-          Serial.println("[SMS CONFIG] Delete response: " + delResp);
+          Serial.println("[CONFIG] SMS: Delete response: " + delResp);
 
           // Find next SMS entry
           headerPos = resp.indexOf("+CMGL:", bodyEnd);
@@ -511,8 +629,8 @@ void configTask(void *pvParameters) {
   }
 }
 
-// Example retry wrapper for SMS or call
-bool sendWithRetry(std::function<bool()> action, int maxAttempts) {
+// Example retry wrapper for SMS or call (tag = calling task name, e.g. ALERT / CONFIG)
+bool sendWithRetry(std::function<bool()> action, int maxAttempts, const char *tag) {
   int attempt = 0;
   int delayMs = 1000; // start with 1s
   while (attempt < maxAttempts) {
@@ -520,7 +638,7 @@ bool sendWithRetry(std::function<bool()> action, int maxAttempts) {
       return true; // success
     }
     attempt++;
-    Serial.printf("[RETRY] Attempt %d failed, backing off...\n", attempt);
+    Serial.printf("[%s] Retry attempt %d failed, backing off...\n", tag, attempt);
     vTaskDelay(pdMS_TO_TICKS(delayMs));
     delayMs *= 2; // exponential backoff
     if (delayMs > 10000) delayMs = 10000; // cap at 10s

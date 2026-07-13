@@ -51,14 +51,33 @@ Go to **Tools → Manage Libraries** (or press `Ctrl+Shift+I`).
 Search for and install each library below. Click **Install** when found.
 If asked to install dependencies, click **Install All**.
 
-| Library Name | Author | Purpose |
+| Library Name | Author / Source | Purpose |
 |---|---|---|
 | `LiquidCrystal_I2C` | Frank de Brabander | LCD 2004 display via I2C |
 | `TinyGSM` | Volodymyr Shymanskyy | SIM800L GSM communication |
 | `ArduinoJson` | Benoit Blanchon | JSON parsing utility |
+| `ESPAsyncWebServer` | **ESP32Async** (GitHub) | Captive portal HTTP server |
+| `AsyncTCP` | **ESP32Async** (GitHub) | Required dependency of ESPAsyncWebServer |
 
-> **Note:** FreeRTOS is already included in the ESP32 Arduino core.
-> You do not need to install it separately.
+> **Note:** FreeRTOS, WiFi, and DNSServer are already included in the ESP32 Arduino core.
+> You do not need to install them separately.
+>
+> **Do not install the old `me-no-dev` forks** of AsyncTCP / ESPAsyncWebServer.
+> Use only the maintained **ESP32Async** repositories (matching pair required):
+>
+> - https://github.com/ESP32Async/AsyncTCP  (use **v3.4.x** or newer — must have `AsyncServer::status() const`)
+> - https://github.com/ESP32Async/ESPAsyncWebServer  (use **v3.11.x** or matching with the AsyncTCP above)
+>
+> **Arduino IDE:** Prefer **Sketch → Include Library → Add .ZIP Library** from the ESP32Async GitHub **Code → Download ZIP** (or a release zip).  
+> Library Manager sometimes installs mismatched or legacy packages under names like `ESP_Async_WebServer`.  
+> **PlatformIO:** `platformio.ini` already pins both via the ESP32Async GitHub URLs.
+>
+> **If you see:** `passing 'const AsyncServer' as 'this' argument discards qualifiers` on `_server.status()`  
+> that means **ESPAsyncWebServer is new but AsyncTCP is old/wrong**. Fix:
+> 1. Delete **all** of these folders if present under `Documents/Arduino/libraries/`:  
+>    `ESP_Async_WebServer`, `ESPAsyncWebServer`, `AsyncTCP`, `Async_TCP`, `ESPAsyncTCP`
+> 2. Reinstall **both** from ESP32Async only (same major generation — do not mix).
+> 3. Restart Arduino IDE and compile again.
 
 ---
 

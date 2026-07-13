@@ -130,3 +130,12 @@ logs/
 # Temp files
 *.tmp
 *.temp
+# PlatformIO
+firmware/**/.pio/
+.pio/
+
+
+# Doc build tooling
+docs/v2/node_modules/
+docs/v2/package-lock.json
+
