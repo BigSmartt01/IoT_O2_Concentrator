@@ -51,9 +51,9 @@ volatile GsmState gsmState = IDLE;
 
 SensorData sharedData;
 
-// === Input mode (always boots to potentiometer; not stored in NVS) ===
+// === Input mode (always boots to sensor; not stored in NVS) ===
 enum InputMode : uint8_t { MODE_POT = 0, MODE_WIFI = 1, MODE_SENSOR = 2 };
-volatile InputMode inputMode = MODE_POT;
+volatile InputMode inputMode = MODE_SENSOR;
 
 // === Captive portal / WiFi demo server ===
 AsyncWebServer server(80);
@@ -73,6 +73,15 @@ TaskHandle_t webTaskHandle;
 
 bool sendWithRetry(std::function<bool()> action, int maxAttempts = 3, const char *tag = "RETRY");
 
+void relayOn() {
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);   // actively pull IN low → relay ON
+}
+
+void relayOff() {
+  pinMode(RELAY_PIN, INPUT);      // high‑impedance → internal pull‑up takes IN to 5V → relay OFF
+}
+
 // === Setup ===
 void setup() {
 
@@ -88,9 +97,10 @@ void setup() {
 
 
   // Pin modes
-  pinMode(RELAY_PIN, OUTPUT);
+  //pinMode(RELAY_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH);  // compressor OFF by default (LOW LEVEL TRIGGER)
+  relayOff();  // ensure compressor OFF by default
+  //digitalWrite(RELAY_PIN, HIGH);  // compressor OFF by default (LOW LEVEL TRIGGER)
   digitalWrite(BUZZER_PIN, LOW);  // buzzer OFF by default
 
   // LCD init
@@ -427,7 +437,8 @@ void alertTask(void *pvParameters) {
 
     // DANGER block - call
     if (dangerCount >= 3) {
-      digitalWrite(RELAY_PIN, HIGH);  // compressor off
+      relayOff();
+      //digitalWrite(RELAY_PIN, HIGH);  // compressor off
       digitalWrite(BUZZER_PIN, HIGH); // continous buzzing
       if (!callMade) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
@@ -453,7 +464,8 @@ void alertTask(void *pvParameters) {
 
     // WARNING block - SMS
     else if (warningCount >= 3) {
-      digitalWrite(RELAY_PIN, LOW); // compressor still on
+      relayOn();
+      //digitalWrite(RELAY_PIN, LOW); // compressor still on
       // WARNING: short intermittent beeps
       if (millis() - lastBuzz > BUZZER_WARNING_GAP) {
         digitalWrite(BUZZER_PIN, HIGH);
@@ -488,7 +500,8 @@ void alertTask(void *pvParameters) {
       }
     }
     else {
-      digitalWrite(RELAY_PIN, LOW);   // compressor on in normal operation
+      relayOn();
+      //digitalWrite(RELAY_PIN, LOW);   // compressor on in normal operation
       digitalWrite(BUZZER_PIN, LOW);  // buzzer off in normal operation
     }
 
