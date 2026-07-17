@@ -32,7 +32,7 @@ struct SensorData {
 
 float O2_NORMAL_MIN     = 85.0;   // default
 float O2_WARNING_MIN    = 70.0;   // default
-String CAREGIVER_NUM    = "+2349036644559"; // default
+String CAREGIVER_NUM    = "+2347045060874"; // default
 
 // GSM state machine
 enum GsmState : uint8_t {
@@ -202,7 +202,7 @@ void sensorTask(void *pvParameters) {
       }
 
       default:
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(500)); 
         break;
     }
   }
@@ -388,6 +388,10 @@ void gsmTask(void *pvParameters) {
 
 // === Alert Task ===
 void alertTask(void *pvParameters) {
+  // Delay alerts for 60 seconds after boot
+  vTaskDelay(pdMS_TO_TICKS(60000));
+  Serial.println("[ALERT] Alerts delayed for 60 seconds after boot");
+
   static uint8_t dangerCount    = 0;
   static uint8_t warningCount   = 0;
   static unsigned long lastBuzz = 0;
@@ -461,9 +465,11 @@ void alertTask(void *pvParameters) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
             gsmState = SMS;
-            String msg = "ALERT: O2 purity low. Reading: ";
-            msg += String(alert.o2, 1);
-            msg += "%. Please check the concentrator.";
+            String msg = "ALERT: O2 purity low.\n";
+            msg += "O2=" + String(alert.o2, 1) + "%, ";
+            msg += "Flow=" + String(alert.flow, 1) + " LPM, ";
+            msg += "Temp=" + String(alert.temp, 1) + "C.\n";
+            msg += "Please check the concentrator.";
             bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); }, 3, "ALERT");
             if (ok) {
               smsSent = true;

@@ -1,0 +1,52 @@
+SINPONER TBCHN OL.OCY/ 深圳市润將科技有限公司
+UART communication parameters Hardware
+Baud rate: 9600bps
+Character length: 1 start bit, 8 data bit, 1 stop bit, no check
+Communication specification
+1. The data in this protocol are all in hexadecimal format. For example, "46" is the decimal equivalent of [70].
+2. The protocol verification must contain 0x16 0x09 0x01/0x02 and CS bits. Only the verified data that passes the verification can be used normally.
+3. The default mode is automatic reporting. The sensor reports data every 500ms.
+4. Response mode: The mainboard sends a query command, and the sensor replies immediately.
+5. If the sensor does not receive the query command within 4 seconds, it will automatically enter the automatic reporting mode. If the sensor receives the mainboard's query command every 4 seconds, it will operate in the response mode.
+Sample program:
+temp_u8=0; //It must be 8-bit unsigned data, and the operation of resetting to zero must be performed first. for 12;i++) temp_u8 += USART2_RXbuffer(i);
+if(temp_u8==0)&&(USART_Rbuffer(0] ==0x16)&&(USART2_Rbuffer[1] = =0x09)&&((USART2_Rbuffer(2)==0x01)|US
+ART2_RXbuffer(2]==Ox02))) //The data packet headers are all correct and the cumulative sum is 0.
+o2_concent = USART2_RXbuffer(3]*256 + USART2_RXbuffer(4);
+//oxygen concentration (02_concent/10) %
+//Based on USART2_RXbuffer(2), it is determined whether it is the PSA or pure oxygen mode. The default value is 0xo1. In PSA mode
+o2_flow = USART2_RXbuffer(5)*256 + USART2_RXbuffer[6);
+//oxygen flow (o2_flow/10) L/min
+02_ temp = USART2_RXbuffer[7)*256 + USART2_RXbuffer[8];
+//oxygen temperature (02_ temp/10) °C
+(The motherboard sends a query instruction for the PSA concentration to the sensor)
+USART2_TXbuffer[0] = 0x11;
+USART2_TXbuffer[1] = 0x01;
+USART2_TXbuffer(2] = 0x01;
+USART2_TXbuffer(3] = OxED;
+(The motherboard sends a query instruction for the pure oxygen concentration to the sensor)
+USART2_TXbuffer(0) = 0x11;
+//
+//
+USART2_TXbuffer(1] = 0x01;
+USART2_TXbuffer(2] = 0x02;
+USART2_TXbuffer (3] = 0xEC
+/
+深圳市润普科技有限公司
+Winpower Technology Co., Ltd.
+5 / 6
+Tel: +86-755-82415317
+Web : www.winpower.com.cn
+มง 100-62415317
+Winpower Technology Co., Ltd. Web : www.winpower.com.cn
+
+
+地址：中国 深圳 龙岗
+
+
+ADD : SHENZHEN CHINA
+
+
+地址：中国 深圳龙岗
+
+ADD
