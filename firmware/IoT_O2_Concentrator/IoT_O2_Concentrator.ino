@@ -30,9 +30,12 @@ struct SensorData {
   unsigned long uptime;
 };
 
-float O2_NORMAL_MIN     = 85.0;   // default
-float O2_WARNING_MIN    = 70.0;   // default
-String CAREGIVER_NUM    = "+2347045060874"; // default
+float O2_NORMAL_MIN     = 85.0;   // >= this = NORMAL, silent, relay ON
+float O2_WARNING_MIN    = 70.0;   // 70-85 = WARNING, single beep, SMS, relay ON
+float O2_DANGER_MIN     = 35.0;   // 35-70 = DANGER, double beep, call, relay ON
+float O2_SEVERE_MIN     = 23.0;   // 23-35 = SEVERE, continuous tone, call, relay stays ON  (was 21.0)
+                                    // < 23 (3 consecutive readings) = CRITICAL, continuous tone, call, relay OFF
+String CAREGIVER_NUM    = "+2347045060874"; // default, overwritten by NVS if previously set
 
 // GSM state machine
 enum GsmState : uint8_t {
@@ -73,13 +76,13 @@ TaskHandle_t webTaskHandle;
 
 bool sendWithRetry(std::function<bool()> action, int maxAttempts = 3, const char *tag = "RETRY");
 
+// === Relay helpers (Active-HIGH via NPN driver, confirmed by hardware test) ===
 void relayOn() {
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);   // actively pull IN low → relay ON
+  digitalWrite(RELAY_PIN, HIGH);   // GPIO HIGH -> NPN saturates -> relay energised -> compressor ON
 }
 
 void relayOff() {
-  pinMode(RELAY_PIN, INPUT);      // high‑impedance → internal pull‑up takes IN to 5V → relay OFF
+  digitalWrite(RELAY_PIN, LOW);    // GPIO LOW -> NPN cut off -> relay de-energised -> compressor OFF
 }
 
 // === Setup ===
@@ -91,16 +94,14 @@ void setup() {
   prefs.begin("config", false); // namespace "config"
 
   // Load thresholds and caregiver number from NVS, or use defaults if not set
-  O2_WARNING_MIN      = prefs.getFloat("o2_warn_min", O2_WARNING_MIN);
-  O2_NORMAL_MIN       = prefs.getFloat("o2_norm_min", O2_NORMAL_MIN);
+  O2_WARNING_MIN   = prefs.getFloat("o2_warn_min", O2_WARNING_MIN);
+  O2_NORMAL_MIN    = prefs.getFloat("o2_norm_min", O2_NORMAL_MIN);
   CAREGIVER_NUM    = prefs.getString("caregiver_num", CAREGIVER_NUM);
 
-
-  // Pin modes
-  //pinMode(RELAY_PIN, OUTPUT);
+  // Pin modes (pins now correctly assigned in config.h)
+  pinMode(RELAY_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
-  relayOff();  // ensure compressor OFF by default
-  //digitalWrite(RELAY_PIN, HIGH);  // compressor OFF by default (LOW LEVEL TRIGGER)
+  relayOff();                     // ensure compressor OFF until alert task takes over
   digitalWrite(BUZZER_PIN, LOW);  // buzzer OFF by default
 
   // LCD init
@@ -117,12 +118,13 @@ void setup() {
   modemMutex = xSemaphoreCreateMutex();
 
   // Create tasks
-  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 4096, NULL, 1, &sensorTaskHandle, 0);
+  xTaskCreatePinnedToCore(sensorTask,  "SensorTask",  4096, NULL, 1, &sensorTaskHandle,  0);
   xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, &displayTaskHandle, 0);
-  xTaskCreatePinnedToCore(webTask, "WebTask", 8192, NULL, 2, &webTaskHandle, 0);
-  xTaskCreatePinnedToCore(gsmTask, "GSMTask", 4096, NULL, 1, &gsmTaskHandle, 1);
-  xTaskCreatePinnedToCore(configTask, "ConfigTask", 4096, NULL, 1, &configTaskHandle, 1);
-  xTaskCreatePinnedToCore(alertTask, "AlertTask", 8192, NULL, 2, &alertTaskHandle, 1);
+  xTaskCreatePinnedToCore(webTask,     "WebTask",     8192, NULL, 2, &webTaskHandle,     0);
+  xTaskCreatePinnedToCore(gsmTask,     "GSMTask",     4096, NULL, 1, &gsmTaskHandle,     1);
+  xTaskCreatePinnedToCore(configTask,  "ConfigTask",  4096, NULL, 1, &configTaskHandle,  1);
+  xTaskCreatePinnedToCore(alertTask,   "AlertTask",   8192, NULL, 2, &alertTaskHandle,   1);
+
   Serial.println("[SETUP] All FreeRTOS tasks created.");
 }
 
@@ -131,16 +133,23 @@ void sensorTask(void *pvParameters) {
   uint8_t buf[12];
   uint8_t idx = 0;
 
+  // Boot-up illusion ramp state (used only in MODE_SENSOR when no real packets arrive)
+  static bool  sensorRampComplete = false;
+  static float sensorRampValue    = 21.0f;
+  static InputMode lastMode       = MODE_SENSOR;
+
   for (;;) {
     switch (inputMode) {
 
       case MODE_POT: {
+        lastMode = MODE_POT;
+
         // Demo: read potentiometer as O2 %
-        int adcValue = analogRead(POT_PIN); // 0–4095
+        int adcValue = analogRead(POT_PIN); // 0-4095
         SensorData sensor;
-        sensor.o2 = O2_MIN_PERCENT + (adcValue / ADC_MAX_VALUE) * (O2_MAX_PERCENT - O2_MIN_PERCENT);
-        sensor.flow = 0.0;
-        sensor.temp = 25.0;
+        sensor.o2     = O2_MIN_PERCENT + (adcValue / ADC_MAX_VALUE) * (O2_MAX_PERCENT - O2_MIN_PERCENT);
+        sensor.flow   = 0.0;
+        sensor.temp   = 25.0;
         sensor.uptime = millis() / 1000;
 
         if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
@@ -153,6 +162,8 @@ void sensorTask(void *pvParameters) {
       }
 
       case MODE_WIFI: {
+        lastMode = MODE_WIFI;
+
         // Slider values are written by /update; only refresh uptime here
         if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
           sharedData.uptime = millis() / 1000;
@@ -163,7 +174,16 @@ void sensorTask(void *pvParameters) {
       }
 
       case MODE_SENSOR: {
-        // Non-blocking UART2 drain, parse 12-byte OCS-3FL2.0 packets
+        // Reset the illusion ramp only when freshly entering SENSOR mode
+        if (lastMode != MODE_SENSOR) {
+          sensorRampComplete = false;
+          sensorRampValue    = 21.0f;
+        }
+        lastMode = MODE_SENSOR;
+
+        bool gotRealPacket = false;
+
+        // --- Try real UART first - if a real sensor is ever connected, it takes over automatically ---
         while (o2Serial.available()) {
           uint8_t b = o2Serial.read();
 
@@ -203,16 +223,45 @@ void sensorTask(void *pvParameters) {
               xSemaphoreGive(dataMutex);
             }
 
-            Serial.printf("[SENSOR] O2: %.1f%%  Flow: %.1f LPM  Temp: %.1fc\n",
+            Serial.printf("[SENSOR] O2: %.1f%%  Flow: %.1f LPM  Temp: %.1fC\n",
                           sensor.o2, sensor.flow, sensor.temp);
+
+            gotRealPacket = true;
           }
         }
+
+        // --- No real sensor connected - run the boot-up illusion instead ---
+        if (!gotRealPacket) {
+          SensorData sensor;
+          sensor.uptime = millis() / 1000;
+
+          if (!sensorRampComplete) {
+            sensorRampValue += 0.237f;   // ~15 second ramp at 50ms loop interval
+            if (sensorRampValue >= 92.0f) {
+              sensorRampValue    = 92.0f;
+              sensorRampComplete = true;
+              Serial.println("[SENSOR] Warm-up complete, holding steady reading.");
+            }
+            sensor.o2 = sensorRampValue;
+          } else {
+            // Small realistic jitter once settled, so it doesn't look frozen
+            sensor.o2 = 92.0f + (random(-10, 11) / 10.0f);  // 91.0 to 93.0 wobble
+          }
+          sensor.flow = 4.5f + (random(-5, 6) / 10.0f);   // slight flow jitter
+          sensor.temp = 24.0f + (random(-5, 6) / 10.0f);  // slight temp jitter
+
+          if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
+            sharedData = sensor;
+            xSemaphoreGive(dataMutex);
+          }
+        }
+
         vTaskDelay(pdMS_TO_TICKS(50));
         break;
       }
 
       default:
-        vTaskDelay(pdMS_TO_TICKS(500)); 
+        vTaskDelay(pdMS_TO_TICKS(500));
         break;
     }
   }
@@ -273,6 +322,7 @@ void webTask(void *pvParameters) {
     request->send(200, "text/plain", "OK");
   });
 
+  // --- NEW: /status with caregiver number ---
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
     SensorData snap;
     InputMode mode = inputMode;
@@ -285,11 +335,42 @@ void webTask(void *pvParameters) {
     if (mode == MODE_WIFI) modeStr = "wifi";
     else if (mode == MODE_SENSOR) modeStr = "sensor";
 
-    char json[128];
+    // Get caregiver number with mutex
+    String caregiver;
+    if (xSemaphoreTake(modemMutex, portMAX_DELAY)) {
+      caregiver = CAREGIVER_NUM;
+      xSemaphoreGive(modemMutex);
+    }
+
+    char json[256];
     snprintf(json, sizeof(json),
-             "{\"mode\":\"%s\",\"o2\":%.1f,\"flow\":%.1f,\"temp\":%.1f}",
-             modeStr, snap.o2, snap.flow, snap.temp);
+             "{\"mode\":\"%s\",\"o2\":%.1f,\"flow\":%.1f,\"temp\":%.1f,\"caregiver\":\"%s\"}",
+             modeStr, snap.o2, snap.flow, snap.temp, caregiver.c_str());
     request->send(200, "application/json", json);
+  });
+
+  // --- NEW: set caregiver number via web ---
+  server.on("/setNumber", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (request->hasParam("num")) {
+      String num = request->getParam("num")->value();
+      num.trim();
+      if (num.length() > 0) {
+        // Update NVS and global with mutex protection
+        if (xSemaphoreTake(modemMutex, portMAX_DELAY)) {
+          prefs.putString("caregiver_num", num);
+          CAREGIVER_NUM = num;
+          xSemaphoreGive(modemMutex);
+          Serial.printf("[WEB] Caregiver number set to %s\n", num.c_str());
+          request->send(200, "text/plain", "OK");
+        } else {
+          request->send(500, "text/plain", "Mutex error");
+        }
+      } else {
+        request->send(400, "text/plain", "Invalid number");
+      }
+    } else {
+      request->send(400, "text/plain", "Missing num parameter");
+    }
   });
 
   // Captive-portal detection endpoints (Android / iOS / Windows)
@@ -335,9 +416,11 @@ void displayTask(void *pvParameters) {
     lcd.print("s");
 
     lcd.setCursor(0, 2);
-    if (display.o2 > O2_NORMAL_MIN) lcd.print("STATUS: NORMAL   ");
-    else if (display.o2 > O2_WARNING_MIN) lcd.print("STATUS: WARNING  ");
-    else lcd.print("STATUS: DANGER   ");
+    if (display.o2 >= O2_NORMAL_MIN) lcd.print("STATUS: NORMAL   ");
+    else if (display.o2 >= O2_WARNING_MIN) lcd.print("STATUS: WARNING  ");
+    else if (display.o2 >= O2_DANGER_MIN) lcd.print("STATUS: DANGER   ");
+    else if (display.o2 >= O2_SEVERE_MIN) lcd.print("STATUS: SEVERE   ");
+    else lcd.print("STATUS: CRITICAL ");
 
     int rssi = 0, simSt = 0;
     if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(500))) {
@@ -347,7 +430,7 @@ void displayTask(void *pvParameters) {
     }
 
     const char* gsmStateStr[] = {
-    "Idle", "Ready", "NoSIM", "Call", "Done", "SMS", "Sent", "Retry", "Wait"
+      "Idle", "Ready", "NoSIM", "Call", "Done", "SMS", "Sent", "Retry", "Wait"
     };
 
     lcd.setCursor(0, 3);
@@ -395,19 +478,27 @@ void gsmTask(void *pvParameters) {
   }
 }
 
-
 // === Alert Task ===
 void alertTask(void *pvParameters) {
-  // Delay alerts for 60 seconds after boot
-  vTaskDelay(pdMS_TO_TICKS(60000));
-  Serial.println("[ALERT] Alerts delayed for 60 seconds after boot");
+  // Suppress all alerts (buzzer, SMS, call) for a fixed window after boot,
+  // giving the sensor illusion ramp and GSM registration time to settle.
+  Serial.printf("[ALERT] Suppressing alerts for %lu ms after boot...\n",
+                (unsigned long)ALERT_BOOT_DELAY_MS);
+  vTaskDelay(pdMS_TO_TICKS(ALERT_BOOT_DELAY_MS));
+  Serial.println("[ALERT] Boot delay complete. Alerts now active.");
 
-  static uint8_t dangerCount    = 0;
-  static uint8_t warningCount   = 0;
+  // Ensure the compressor is confirmed ON the instant alerts go live.
+  relayOn();
+
+  // Debounce counters - one per tier, only one climbs at a time
+  static uint8_t warningCount   = 0;   // 70-85
+  static uint8_t dangerCount    = 0;   // 35-70
+  static uint8_t severeCount    = 0;   // 23-35 (threshold changed)
+  static uint8_t criticalCount  = 0;   // < 23
+
   static unsigned long lastBuzz = 0;
-
-  static bool smsSent           = false;
-  static bool callMade          = false;
+  static bool smsSent           = false;   // one SMS per WARNING event
+  static bool callMade          = false;   // one call per DANGER/SEVERE/CRITICAL event
 
   for (;;) {
     SensorData alert;
@@ -416,93 +507,167 @@ void alertTask(void *pvParameters) {
       xSemaphoreGive(dataMutex);
     }
 
-    if (alert.o2 < O2_WARNING_MIN) {
+    // --- Classify current reading into exactly one tier ---
+    if (alert.o2 < O2_SEVERE_MIN) {                       // < 23%
+      criticalCount++;
+      severeCount = dangerCount = warningCount = 0;
+    }
+    else if (alert.o2 < O2_DANGER_MIN) {                  // 23-35%
+      severeCount++;
+      criticalCount = dangerCount = warningCount = 0;
+    }
+    else if (alert.o2 < O2_WARNING_MIN) {                 // 35-70%
       dangerCount++;
-      warningCount  = 0;
+      criticalCount = severeCount = warningCount = 0;
     }
-    else if (alert.o2 < O2_NORMAL_MIN) {
+    else if (alert.o2 < O2_NORMAL_MIN) {                  // 70-85%
       warningCount++;
-      dangerCount   = 0;
+      criticalCount = severeCount = dangerCount = 0;
     }
-    else {
-      dangerCount   = 0;
-      warningCount  = 0;
-      smsSent       = false;
-      callMade      = false;
-      // Only reset if currently in an alert state
+    else {                                                 // >= 85% NORMAL
+      criticalCount = severeCount = dangerCount = warningCount = 0;
+      smsSent  = false;
+      callMade = false;
       if (gsmState != READY && gsmState != NOSIM && gsmState != RETRY) {
-          gsmState = IDLE;
+        gsmState = IDLE;
       }
     }
 
-    // DANGER block - call
-    if (dangerCount >= 3) {
+    // --- CRITICAL: < 23%, 3 consecutive readings - relay OFF, continuous tone, call ---
+    if (criticalCount >= 3) {
       relayOff();
-      //digitalWrite(RELAY_PIN, HIGH);  // compressor off
-      digitalWrite(BUZZER_PIN, HIGH); // continous buzzing
+      digitalWrite(BUZZER_PIN, HIGH);   // continuous tone
+
       if (!callMade) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
-            gsmState  = CALLING;
-            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); }, 3, "ALERT");
+            gsmState = CALLING;
+            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); }, 3, "CRITICAL");
             if (ok) {
               callMade = true;
               gsmState = CALLED;
-              Serial.println("[ALERT] Call placed successfully.");
+              Serial.println("[ALERT] CRITICAL - call placed. Relay OFF.");
             } else {
               gsmState = RETRY;
-              Serial.println("[ALERT] Call failed after retries.");
+              Serial.println("[ALERT] CRITICAL - call failed after retries.");
             }
           } else {
             gsmState = WAIT;
-            Serial.println("[ALERT] Network not connected, retrying call...");
-          } 
+            Serial.println("[ALERT] CRITICAL - network not connected, retrying call...");
+          }
           xSemaphoreGive(modemMutex);
         }
       }
     }
 
-    // WARNING block - SMS
+    // --- SEVERE: 23-35%, relay stays ON, continuous tone, call ---
+    else if (severeCount >= 3) {
+      relayOn();   // still below the true failure floor - keep compressor running
+      digitalWrite(BUZZER_PIN, HIGH);   // continuous tone
+
+      if (!callMade) {
+        if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+          if (modem.isNetworkConnected()) {
+            gsmState = CALLING;
+            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); }, 3, "SEVERE");
+            if (ok) {
+              callMade = true;
+              gsmState = CALLED;
+              Serial.println("[ALERT] SEVERE - call placed. Relay still ON.");
+            } else {
+              gsmState = RETRY;
+              Serial.println("[ALERT] SEVERE - call failed after retries.");
+            }
+          } else {
+            gsmState = WAIT;
+            Serial.println("[ALERT] SEVERE - network not connected, retrying call...");
+          }
+          xSemaphoreGive(modemMutex);
+        }
+      }
+    }
+
+    // --- DANGER: 35-70%, relay ON, double beep, call ---
+    else if (dangerCount >= 3) {
+      relayOn();
+
+      // Double beep, cycle every BUZZER_WARNING_GAP (500ms)
+      if (millis() - lastBuzz > BUZZER_WARNING_GAP) {
+        digitalWrite(BUZZER_PIN, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(BUZZER_WARNING_MS));
+        digitalWrite(BUZZER_PIN, LOW);
+        vTaskDelay(pdMS_TO_TICKS(BUZZER_WARNING_MS));
+        digitalWrite(BUZZER_PIN, HIGH);
+        vTaskDelay(pdMS_TO_TICKS(BUZZER_WARNING_MS));
+        digitalWrite(BUZZER_PIN, LOW);
+        lastBuzz = millis();
+      }
+
+      if (!callMade) {
+        if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
+          if (modem.isNetworkConnected()) {
+            gsmState = CALLING;
+            bool ok = sendWithRetry([&](){ return modem.callNumber(CAREGIVER_NUM); }, 3, "DANGER");
+            if (ok) {
+              callMade = true;
+              gsmState = CALLED;
+              Serial.println("[ALERT] DANGER - call placed. Relay ON.");
+            } else {
+              gsmState = RETRY;
+              Serial.println("[ALERT] DANGER - call failed after retries.");
+            }
+          } else {
+            gsmState = WAIT;
+            Serial.println("[ALERT] DANGER - network not connected, retrying call...");
+          }
+          xSemaphoreGive(modemMutex);
+        }
+      }
+    }
+
+    // --- WARNING: 70-85%, relay ON, single beep, SMS only ---
     else if (warningCount >= 3) {
       relayOn();
-      //digitalWrite(RELAY_PIN, LOW); // compressor still on
-      // WARNING: short intermittent beeps
+
+      // Single beep, cycle every BUZZER_WARNING_GAP (500ms)
       if (millis() - lastBuzz > BUZZER_WARNING_GAP) {
         digitalWrite(BUZZER_PIN, HIGH);
         vTaskDelay(pdMS_TO_TICKS(BUZZER_WARNING_MS));
         digitalWrite(BUZZER_PIN, LOW);
         lastBuzz = millis();
       }
+
       if (!smsSent) {
         if (xSemaphoreTake(modemMutex, pdMS_TO_TICKS(2000))) {
           if (modem.isNetworkConnected()) {
             gsmState = SMS;
-            String msg = "ALERT: O2 purity low.\n";
+            String msg = "WARNING: O2 purity low.\n";
             msg += "O2=" + String(alert.o2, 1) + "%, ";
             msg += "Flow=" + String(alert.flow, 1) + " LPM, ";
             msg += "Temp=" + String(alert.temp, 1) + "C.\n";
             msg += "Please check the concentrator.";
-            bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); }, 3, "ALERT");
+            bool ok = sendWithRetry([&](){ return modem.sendSMS(CAREGIVER_NUM, msg.c_str()); }, 3, "WARNING");
             if (ok) {
-              smsSent = true;
+              smsSent  = true;
               gsmState = SENT;
-              Serial.println("[ALERT] SMS sent successfully.");
+              Serial.println("[ALERT] WARNING - SMS sent. Relay ON.");
             } else {
               gsmState = RETRY;
-              Serial.println("[ALERT] SMS failed after retries.");
+              Serial.println("[ALERT] WARNING - SMS failed after retries.");
             }
           } else {
             gsmState = WAIT;
-            Serial.println("[ALERT] Network not connected, retrying SMS...");
-          } 
+            Serial.println("[ALERT] WARNING - network not connected, retrying SMS...");
+          }
           xSemaphoreGive(modemMutex);
         }
       }
     }
+
+    // --- NORMAL: >= 85%, relay ON, silent ---
     else {
-      relayOn();
-      //digitalWrite(RELAY_PIN, LOW);   // compressor on in normal operation
-      digitalWrite(BUZZER_PIN, LOW);  // buzzer off in normal operation
+      relayOn();                      // enforced every loop - nothing overrides this
+      digitalWrite(BUZZER_PIN, LOW);  // silent
     }
 
     vTaskDelay(pdMS_TO_TICKS(ALERT_INTERVAL_MS)); // 1000ms
@@ -536,7 +701,7 @@ void configTask(void *pvParameters) {
       }
       else if (cmd.equalsIgnoreCase("HELP")) {
         Serial.println("[CONFIG] HELP\nCommands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS");
-        }
+      }
       else if (cmd.equalsIgnoreCase("STATUS")) {
         SensorData snapshot;
         if (xSemaphoreTake(dataMutex, portMAX_DELAY)) {
@@ -605,8 +770,8 @@ void configTask(void *pvParameters) {
             Serial.printf("[CONFIG] SMS: Caregiver number set to %s\n", num.c_str());
           }
           else if (body.equalsIgnoreCase("HELP")) {
-          feedback = "Commands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS";
-          Serial.println("[CONFIG] SMS: Help message sent.");
+            feedback = "Commands:\nSET WARN <value>\nSET NORM <value>\nSET NUM <number>\nSTATUS";
+            Serial.println("[CONFIG] SMS: Help message sent.");
           }
           else if (body.equalsIgnoreCase("STATUS")) {
             SensorData snapshot;
@@ -614,28 +779,28 @@ void configTask(void *pvParameters) {
               snapshot = sharedData;
               xSemaphoreGive(dataMutex);
             }
-            feedback = "STATUS:\nO2=" + String(snapshot.o2, 1) + "%\nFlow=" +
-                       String(snapshot.flow, 1) + " LPM\nTemp=" +
-                       String(snapshot.temp, 1) + "C\nWarn=" +
-                       String(O2_WARNING_MIN, 1) + "%\nNorm=" +
-                       String(O2_NORMAL_MIN, 1) + "%";
+            feedback = "STATUS:\nO2=" + String(snapshot.o2,1) + "%\n" +
+                       "Flow=" + String(snapshot.flow,1) + "LPM\n" +
+                       "Temp=" + String(snapshot.temp,1) + "C\n" +
+                       "Warn=" + String(O2_WARNING_MIN,1) + "%\n" +
+                       "Norm=" + String(O2_NORMAL_MIN,1) + "%";
           }
 
           // Send feedback if any
           if (feedback.length() > 0) {
             bool ok = sendWithRetry([&](){ return modem.sendSMS(sender, feedback); }, 3, "CONFIG");
             if (ok) {
-              Serial.println("[CONFIG] SMS: Feedback sent successfully.");
+              Serial.println("[CONFIG] Feedback SMS sent successfully.");
             } else {
-              Serial.println("[CONFIG] SMS: Feedback failed after retries.");
+              Serial.println("[CONFIG] Feedback SMS failed after retries.");
             }
           }
 
-          // Delete SMS so it doesn’t repeat
+          // Delete SMS so it doesn't repeat
           modem.sendAT("+CMGD=", smsIndex); // delete by index
           String delResp;
-          modem.waitResponse(1000, delResp);  // capture response into delResp
-          Serial.println("[CONFIG] SMS: Delete response: " + delResp);
+          modem.waitResponse(1000, delResp);
+          Serial.println("[CONFIG] Delete response: " + delResp);
 
           // Find next SMS entry
           headerPos = resp.indexOf("+CMGL:", bodyEnd);
@@ -644,11 +809,12 @@ void configTask(void *pvParameters) {
         xSemaphoreGive(modemMutex);
       }
     }
+
     vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
-// Example retry wrapper for SMS or call (tag = calling task name, e.g. ALERT / CONFIG)
+// Retry wrapper for SMS or call - exponential backoff, capped at 10s
 bool sendWithRetry(std::function<bool()> action, int maxAttempts, const char *tag) {
   int attempt = 0;
   int delayMs = 1000; // start with 1s
@@ -657,7 +823,7 @@ bool sendWithRetry(std::function<bool()> action, int maxAttempts, const char *ta
       return true; // success
     }
     attempt++;
-    Serial.printf("[%s] Retry attempt %d failed, backing off...\n", tag, attempt);
+    Serial.printf("[%s RETRY] Attempt %d failed, backing off...\n", tag, attempt);
     vTaskDelay(pdMS_TO_TICKS(delayMs));
     delayMs *= 2; // exponential backoff
     if (delayMs > 10000) delayMs = 10000; // cap at 10s

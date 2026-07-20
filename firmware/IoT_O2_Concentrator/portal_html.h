@@ -27,6 +27,12 @@ static const char PORTAL_HTML[] PROGMEM = R"rawliteral(
   .slider-row .val{color:#38bdf8;font-weight:600;font-variant-numeric:tabular-nums}
   input[type=range]{width:100%;accent-color:#38bdf8;height:1.5rem}
   .hint{font-size:.8rem;color:#64748b;text-align:center;margin-top:.5rem}
+  .number-input{display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap}
+  .number-input input{flex:1;padding:0.5rem;border-radius:6px;border:1px solid #334155;
+                       background:#0f172a;color:#e2e8f0;font-size:1rem;min-width:200px}
+  .number-input button{padding:0.5rem 1rem;background:#38bdf8;border:none;border-radius:6px;
+                        color:#0f172a;font-weight:bold;cursor:pointer}
+  .number-display{margin-top:0.5rem;font-size:0.9rem;color:#94a3b8}
 </style>
 </head>
 <body>
@@ -51,6 +57,15 @@ static const char PORTAL_HTML[] PROGMEM = R"rawliteral(
       <div class="top"><span>Temperature (&deg;C)</span><span class="val" id="tempVal">25.0</span></div>
       <input type="range" id="temp" min="5.0" max="55.0" step="0.1" value="25.0">
     </div>
+  </div>
+  <!-- NEW: Caregiver Number card -->
+  <div class="card">
+    <h2>Caregiver Number</h2>
+    <div class="number-input">
+      <input type="tel" id="caregiverInput" placeholder="+234..." value="">
+      <button id="setNumberBtn">Set</button>
+    </div>
+    <div class="number-display">Current: <span id="currentNumber">(unknown)</span></div>
   </div>
   <p class="hint">Connect to AP &ldquo;O2-Controller&rdquo; &middot; open 192.168.4.1</p>
 <script>
@@ -95,7 +110,29 @@ fetch('/status').then(r=>r.json()).then(d=>{
   if(typeof d.o2==='number'){purity.value=d.o2;purityVal.textContent=fmt(d.o2)}
   if(typeof d.flow==='number'){flow.value=d.flow;flowVal.textContent=fmt(d.flow)}
   if(typeof d.temp==='number'){temp.value=d.temp;tempVal.textContent=fmt(d.temp)}
+  // caregiver
+  if(d.caregiver){ 
+    document.getElementById('currentNumber').textContent = d.caregiver;
+    document.getElementById('caregiverInput').value = d.caregiver;
+  }
 }).catch(()=>{});
+
+// Set caregiver number
+document.getElementById('setNumberBtn').addEventListener('click', function(){
+  const num = document.getElementById('caregiverInput').value.trim();
+  if(num === '') return;
+  fetch('/setNumber?num='+encodeURIComponent(num))
+    .then(r=>r.text())
+    .then(resp=>{
+      if(resp==='OK'){
+        document.getElementById('currentNumber').textContent = num;
+        alert('Number updated successfully');
+      } else {
+        alert('Error: '+resp);
+      }
+    })
+    .catch(()=>alert('Request failed'));
+});
 </script>
 </body>
 </html>

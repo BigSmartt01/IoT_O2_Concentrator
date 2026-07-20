@@ -14,31 +14,36 @@
 #define O2_TX_PIN             17   // UART2 TX to OXYGEN SENSOR_RXD
 #define O2_RX_PIN             16   // UART2 RX from OXYGEN SENSOR_TXD
 
-// === GPIO Pin Assignments ===
-#define RELAY_PIN             26   // Relay control GPIO
-#define BUZZER_PIN            27   // Buzzer GPIO
+// === GPIO Pin Assignments (corrected) ===
+#define RELAY_PIN             27   // Relay control GPIO (was 26)
+#define BUZZER_PIN            26   // Buzzer GPIO (was 27)
 #define POT_PIN               34   // ADC input for demo potentiometer
 #define LCD_I2C_ADDR          0x27 // Default I2C address (change to 0x3F if needed)
 
-// === Thresholds ===
-extern float O2_NORMAL_MIN;           // Above this = NORMAL
-extern float O2_WARNING_MIN;          // Between 70–85 = WARNING, Below this = DANGER
+// === Thresholds (5-tier alert system) ===
+// Runtime values, loaded from NVS in setup() with these as fallback defaults.
+// Declared here as extern, defined as float globals in firmware.ino.
+extern float O2_NORMAL_MIN;    // >= this           = NORMAL   (silent, relay ON)
+extern float O2_WARNING_MIN;   // WARNING_MIN to NORMAL_MIN  = WARNING  (single beep, SMS, relay ON)
+extern float O2_DANGER_MIN;    // DANGER_MIN to WARNING_MIN  = DANGER   (double beep, call, relay ON)
+extern float O2_SEVERE_MIN;    // SEVERE_MIN to DANGER_MIN   = SEVERE   (continuous tone, call, relay ON)
+                                // below SEVERE_MIN (3 consecutive readings) = CRITICAL (continuous tone, call, relay OFF)
 
 // === Timing ===
-#define SENSOR_INTERVAL_MS    500  // Sensor update interval
-#define DISPLAY_INTERVAL_MS   500  // LCD refresh interval
-#define ALERT_INTERVAL_MS     1000 // Alert task loop interval
-#define BUZZER_WARNING_MS     200  // Warning beep duration
-#define BUZZER_WARNING_GAP    1000 // Gap between warning beeps
+#define SENSOR_INTERVAL_MS    500    // Sensor update interval
+#define DISPLAY_INTERVAL_MS   500    // LCD refresh interval
+#define ALERT_INTERVAL_MS     1000   // Alert task loop interval
+#define BUZZER_WARNING_MS     200    // Warning beep duration
+#define BUZZER_WARNING_GAP    500    // Gap between warning beeps (changed from 1000)
+#define ALERT_BOOT_DELAY_MS   30000  // Suppress all alerts (buzzer/SMS/call) for this long after boot
 
 // === GSM Settings ===
-// Uncomment TinyGSM include in main sketch when SIM800L EVB is wired
 #define GSM_BAUD              9600
-extern String CAREGIVER_NUM;   // Hard-coded caregiver number (demo)
+extern String CAREGIVER_NUM;   // Caregiver number, loaded from NVS with demo default
 
 // === O2 Settings ===
 #define O2_BAUD               9600
- 
+
 // === Demo Mode Mapping ===
 // Potentiometer ADC range mapped to O2 percentage
 #define O2_MIN_PERCENT        21.0

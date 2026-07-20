@@ -65,16 +65,16 @@ If asked to install dependencies, click **Install All**.
 > **Do not install the old `me-no-dev` forks** of AsyncTCP / ESPAsyncWebServer.
 > Use only the maintained **ESP32Async** repositories (matching pair required):
 >
-> - https://github.com/ESP32Async/AsyncTCP  (use **v3.4.x** or newer — must have `AsyncServer::status() const`)
-> - https://github.com/ESP32Async/ESPAsyncWebServer  (use **v3.11.x** or matching with the AsyncTCP above)
+> - https://github.com/ESP32Async/AsyncTCP (use **v3.4.x** or newer — must have `AsyncServer::status() const`)
+> - https://github.com/ESP32Async/ESPAsyncWebServer (use **v3.11.x** or matching with the AsyncTCP above)
 >
-> **Arduino IDE:** Prefer **Sketch → Include Library → Add .ZIP Library** from the ESP32Async GitHub **Code → Download ZIP** (or a release zip).  
-> Library Manager sometimes installs mismatched or legacy packages under names like `ESP_Async_WebServer`.  
+> **Arduino IDE:** Prefer **Sketch → Include Library → Add .ZIP Library** from the ESP32Async GitHub **Code → Download ZIP** (or a release zip).
+> Library Manager sometimes installs mismatched or legacy packages under names like `ESP_Async_WebServer`.
 > **PlatformIO:** `platformio.ini` already pins both via the ESP32Async GitHub URLs.
 >
-> **If you see:** `passing 'const AsyncServer' as 'this' argument discards qualifiers` on `_server.status()`  
+> **If you see:** `passing 'const AsyncServer' as 'this' argument discards qualifiers` on `_server.status()`
 > that means **ESPAsyncWebServer is new but AsyncTCP is old/wrong**. Fix:
-> 1. Delete **all** of these folders if present under `Documents/Arduino/libraries/`:  
+> 1. Delete **all** of these folders if present under `Documents/Arduino/libraries/`:
 >    `ESP_Async_WebServer`, `ESPAsyncWebServer`, `AsyncTCP`, `Async_TCP`, `ESPAsyncTCP`
 > 2. Reinstall **both** from ESP32Async only (same major generation — do not mix).
 > 3. Restart Arduino IDE and compile again.
@@ -117,8 +117,8 @@ Go to **Tools** and confirm these settings:
 
 ## Step 6 — Open and Upload the Firmware
 
-1. Open the firmware folder and double-click `firmware.ino`
-   - It will open in Arduino IDE along with all related `.h` and `.cpp` files
+1. Open the firmware folder and double-click `IoT_O2_Concentrator.ino`
+   - It will open in Arduino IDE along with `config.h` and `portal_html.h` as tabs
 2. Click the **Upload** button (the right-arrow icon, or press `Ctrl+U`)
 3. Wait — you will see orange text scrolling in the output panel at the bottom
 4. When you see **"Done uploading"**, the firmware is on the ESP32
@@ -131,18 +131,34 @@ Go to **Tools** and confirm these settings:
 
 ## Step 7 — Set the Caregiver Phone Number
 
-This must be done before the system is deployed.
+This can be done **any time**, before or after deployment, using whichever method is
+most convenient. All three write to the same flash storage and take effect immediately.
 
+**Option A — Web Portal (recommended, no cable needed)**
+1. On your phone or laptop, connect to WiFi network **`O2-Controller`**, password **`12345678`**
+2. A captive portal page should open automatically (if not, open a browser and visit `192.168.4.1`)
+3. Scroll to the **Caregiver Number** card, type the number in international format
+   (e.g. `+2348012345678`), and tap **Set**
+4. You should see a confirmation and the "Current" field updates
+
+**Option B — USB Serial**
 1. After uploading, go to **Tools → Serial Monitor** (or press `Ctrl+Shift+M`)
 2. Set the baud rate to **115200** (bottom-right dropdown in the Serial Monitor)
-3. The ESP32 will print a setup menu on startup
-4. Type the caregiver number in international format and press Enter:
+3. Type the command and press Enter:
    ```
-   +2348012345678
+   SET NUM +2348012345678
    ```
-5. The system will confirm the number is saved
+4. The system confirms the number is saved
 
-The number is stored in flash memory and will not be lost when power is removed.
+**Option C — SMS (field update, no physical access needed)**
+Send an SMS to the SIM card installed in the SIM800L EVB:
+```
+SET NUM +2348012345678
+```
+The device replies with a confirmation SMS and deletes the processed message.
+
+The number is stored in flash memory (NVS) and survives power loss and reflashing
+(as long as you don't erase flash entirely).
 
 ---
 
@@ -150,9 +166,16 @@ The number is stored in flash memory and will not be lost when power is removed.
 
 With the ESP32 powered and running:
 
-- The **LCD** should display O2 percentage, status, GSM signal, and uptime
-- Rotate the **potentiometer** (demo mode) to simulate different O2 levels
-- Rotating below the warning threshold should trigger the **buzzer**
+- The **LCD** should display O2 percentage, flow, temperature, status, GSM signal, and uptime across its 4 rows
+- On boot, the system defaults to **Sensor mode**. With no real sensor connected, it runs a
+  warm-up illusion — watch the O2 reading climb from ~21% to ~92% over about 15 seconds, then settle
+- To test the full alert chain without hardware, connect to the **O2-Controller** WiFi portal,
+  switch **Input Mode** to **WiFi**, and drag the O2 Purity slider down through each tier:
+  - Below 85% → single beep, SMS sent
+  - Below 70% → double beep, voice call placed
+  - Below 35% → continuous tone, voice call placed
+  - Below 23% (held for ~3 seconds) → continuous tone, voice call placed, **relay cuts off**
+- Alerts are **silenced for the first 30 seconds after boot** — this is intentional, not a bug
 - Check the Serial Monitor at 115200 baud for debug output if something is not working
 
 ---
@@ -161,13 +184,17 @@ With the ESP32 powered and running:
 
 | Problem | Likely Cause | Fix |
 |---|---|---|
-| LCD is blank | Wrong I2C address | Run I2C scanner sketch (search online: "Arduino I2C scanner"), note the address, update `config.h` |
+| LCD is blank | Wrong I2C address | Run an I2C scanner sketch (search online: "Arduino I2C scanner"), note the address, update `LCD_I2C_ADDR` in `config.h` |
 | LCD has blocks, no text | Contrast too low | Adjust the small potentiometer on the LCD backpack with a small screwdriver |
 | Upload fails | Boot mode issue | Hold BOOT button on ESP32 during upload start |
 | Upload fails | Wrong COM port | Unplug and replug USB, recheck Tools → Port |
 | No COM port visible | Charge-only USB cable | Replace cable with a data cable |
-| GSM not sending SMS | SIM not registered | Check AT+CREG? in Serial Monitor via AT passthrough mode |
-| Buzzer not sounding | Demo pot not turned | Rotate potentiometer toward GND end to simulate low O2 |
+| Compile error mentioning `AsyncServer` / `const` qualifiers | Mismatched AsyncTCP / ESPAsyncWebServer versions | See the library note in Step 3 — remove old copies, reinstall matching ESP32Async pair |
+| Captive portal doesn't auto-open | Phone/OS didn't trigger detection | Manually open a browser and go to `192.168.4.1` |
+| GSM not sending SMS or calling | SIM not registered on network | Check the LCD Row 4 GSM/SIM status; also check Serial Monitor for `[GSM]` log lines |
+| Relay behaves opposite of expected | Wiring or pin assignment mismatch | Confirm `RELAY_PIN` and `BUZZER_PIN` in `config.h` match your actual wiring — these were swapped once during testing on this project, double-check before assuming firmware is at fault |
+| Buzzer doesn't sound in WiFi demo mode | Not enough time held below threshold | Each tier needs ~3 consecutive readings (about 3 seconds) below its threshold before it triggers — this is intentional debounce, not a bug |
+| Alerts don't fire right after boot | Boot delay active | Alerts are suppressed for the first 30 seconds after boot by design (`ALERT_BOOT_DELAY_MS` in `config.h`) |
 
 ---
 
@@ -175,14 +202,17 @@ With the ESP32 powered and running:
 
 ```
 firmware/
-├── firmware.ino      # Main sketch — FreeRTOS task setup and initialization
-├── config.h          # All configurable constants (thresholds, pins, baud rates)
-├── sensor.h/.cpp     # sensorTask — OCS-3FL2.0 UART parsing + potentiometer demo
-├── display.h/.cpp    # displayTask — LCD 2004 update logic
-└── alert.h/.cpp      # alertTask — relay, buzzer, GSM alert management
+├── IoT_O2_Concentrator.ino   # Main sketch — all 5 FreeRTOS tasks, alert state machine
+├── config.h                   # All configurable constants (pins, thresholds, timing, WiFi AP)
+└── portal_html.h              # Captive portal webpage (mode select, sliders, caregiver number)
 ```
+
+All firmware logic lives in the single `.ino` file plus these two headers — there is no
+separate `sensor.cpp` / `display.cpp` / `alert.cpp` split; each task is a function inside
+the main sketch.
 
 ---
 
-*Setup Guide v1.0 — IoT Oxygen Concentrator Integration*
+*Setup Guide — IoT Oxygen Concentrator Integration*
+*Updated to match firmware with 5-tier alerts, 3 input modes, and web-based caregiver configuration.*
 *For questions, refer to the full project documentation in the `docs/` folder.*
