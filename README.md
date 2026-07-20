@@ -158,10 +158,8 @@ The device replies with confirmation and deletes the processed message.
 
 <p align="center">
   <img src="docs/v2/images/sms_received.jpeg" width="500"><br>
-  <em>SMS alert received on phone</em>
+  <em>Caregiver receiving a live SMS alert</em>
 </p>
-
-*Caregiver receiving a live SMS alert*
 
 All three methods are always available regardless of which input mode (pot/WiFi/sensor) is active.
 
