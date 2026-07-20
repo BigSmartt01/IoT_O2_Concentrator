@@ -43,7 +43,7 @@ The concentrator itself is **not modified**. All integration is external in a se
 
 Full wiring, schematic, and PCB layout are documented in `docs/`.
 
-![Schematic](docs\v2\images\IoT_O2_Concentrator_Schematics_Rev2.0-1.png)
+![Schematic](docs/v2/images/IoT_O2_Concentrator_Schematics_Rev2.0-1.png)
 
 ---
 
@@ -153,7 +153,7 @@ HELP
 Send the same commands as SMS text to the SIM card installed in the SIM800L EVB.
 The device replies with confirmation and deletes the processed message.
 
-![SMS alert received on phone](docs\v2\images\sms_received.jpeg)
+![SMS alert received on phone](docs/v2/images/sms_received.jpeg)
 *Caregiver receiving a live SMS alert*
 
 All three methods are always available regardless of which input mode (pot/WiFi/sensor) is active.
