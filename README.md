@@ -94,7 +94,8 @@ the web portal without reflashing:
 - **WiFi** — connect to the device's own captive portal and drag sliders for O2, flow, and temperature
 - **Sensor** *(boots here by default)* — real UART2 data from the OCS-3FL2.0. If no real sensor is connected, the system runs a realistic warm-up illusion (ramping 21% → ~92% over ~15 seconds, then settling with slight jitter) so the full alert chain can be demonstrated with no hardware attached. The moment a real sensor sends valid packets, live data takes over automatically.
 
-![Captive portal interface](docs/v2/images/captive_portal.jpeg)
+<img src="docs/v2/images/captive_portal.jpeg" width="500">
+
 *WiFi captive portal for demo input and caregiver configuration*
 
 ---
