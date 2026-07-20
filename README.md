@@ -8,7 +8,9 @@ notifies a caregiver via SMS or voice call, and cuts compressor power only at tr
 system failure levels.
 
 ---
-![Fabricated PCB, top view](docs/v1/images/3D_PCB_Top.png)
+<p align="center">
+  <img src="docs/v1/images/3D_PCB_Top.png" width="500">
+</p>
 
 ## What This System Does
 
@@ -94,9 +96,10 @@ the web portal without reflashing:
 - **WiFi** — connect to the device's own captive portal and drag sliders for O2, flow, and temperature
 - **Sensor** *(boots here by default)* — real UART2 data from the OCS-3FL2.0. If no real sensor is connected, the system runs a realistic warm-up illusion (ramping 21% → ~92% over ~15 seconds, then settling with slight jitter) so the full alert chain can be demonstrated with no hardware attached. The moment a real sensor sends valid packets, live data takes over automatically.
 
-<img src="docs/v2/images/captive_portal.jpeg" width="500">
-
-*WiFi captive portal for demo input and caregiver configuration*
+<p align="center">
+  <img src="docs/v2/images/captive_portal.jpeg" width="500"><br>
+  <em>WiFi captive portal for demo input and caregiver configuration</em>
+</p>
 
 ---
 
@@ -153,7 +156,11 @@ HELP
 Send the same commands as SMS text to the SIM card installed in the SIM800L EVB.
 The device replies with confirmation and deletes the processed message.
 
-![SMS alert received on phone](docs/v2/images/sms_received.jpeg)
+<p align="center">
+  <img src="docs/v2/images/sms_received.jpeg" width="500"><br>
+  <em>SMS alert received on phone</em>
+</p>
+
 *Caregiver receiving a live SMS alert*
 
 All three methods are always available regardless of which input mode (pot/WiFi/sensor) is active.
